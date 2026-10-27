@@ -1,5 +1,5 @@
 // Port Map — offline support. App files: network first (so updates arrive), cache when offline.
-const CACHE = "portmap-3.0.0";
+const CACHE = "portmap-3.1.0";
 const CORE = ["./", "index.html", "i18n.js", "manifest.webmanifest", "portmap.ico",
   "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png"];
 

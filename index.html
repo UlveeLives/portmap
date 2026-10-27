@@ -254,6 +254,33 @@ td .badmark{color:#e5484d;font-weight:700}
 .x:hover{color:var(--danger);border-color:var(--danger)}
 .err{color:var(--danger)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+/* 3.1 */
+.checks{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.checks>summary{cursor:pointer;font-weight:700}
+.checks .ck{font-size:13px;padding:4px 8px;margin-top:6px;border-radius:6px;background:color-mix(in srgb,#f0a030 14%,var(--bg));border:1px solid color-mix(in srgb,#f0a030 40%,var(--line))}
+.checks .ck.err{background:color-mix(in srgb,#e5484d 12%,var(--bg));border-color:color-mix(in srgb,#e5484d 45%,var(--line))}
+.checks .ck.click{cursor:pointer}
+details.adv{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg)}
+details.adv>summary{cursor:pointer;font-weight:600;font-size:14px}
+details.adv[open]>summary{margin-bottom:8px}
+details.adv .row,details.adv label{margin-top:6px}
+.lbl606{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.dupmark{color:#e5484d;font-weight:700}
+.p.down{opacity:.45;text-decoration:line-through}
+td.nw{white-space:nowrap}
+@media print{
+  @page{size:A3 landscape;margin:8mm}
+  body{background:#fff;color:#000;padding:0}
+  .bar,.side,.tools,#btn-install,.umenu,.rk-btn,.addsw,.checks>summary::marker{display:none!important}
+  .main{grid-template-columns:1fr}
+  .legwrap{display:block}.legwrap>summary{display:none}
+  .wrap{max-width:none}
+  .tw{overflow:visible}
+  table{font-size:10px}
+  .tablebox,.rack{break-inside:auto}
+  tr{break-inside:avoid}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
 </style>
 </head>
 <body>
@@ -271,6 +298,8 @@ td .badmark{color:#e5484d;font-weight:700}
       <button class="b sm" id="btn-undo" type="button" data-t="undo" title="Ctrl+Z" disabled></button>
       <button class="b sm" id="btn-exp" type="button" data-t="export"></button>
       <button class="b sm" id="btn-imp" type="button" data-t="import"></button>
+      <button class="b sm" id="btn-csv" type="button" data-t="exportCsv"></button>
+      <button class="b sm" id="btn-print" type="button" data-t="printPdf"></button>
       <button class="b sm pri" id="btn-install" type="button" data-t="install" hidden></button>
       <input type="file" id="imp" accept=".json,application/json" hidden>
       <div class="status" id="status"></div>
@@ -279,6 +308,7 @@ td .badmark{color:#e5484d;font-weight:700}
 
   <div id="v-map" class="wrap">
     <details class="legwrap" id="legwrap" open><summary data-t="legendTitle"></summary><div class="legend" id="legend"></div></details>
+    <details class="checks" id="checks" hidden open><summary id="checks-t"></summary><div id="checks-b"></div></details>
     <div class="main">
       <div class="racks" id="racks"></div>
       <aside class="side" id="side" aria-live="polite"></aside>
@@ -293,7 +323,7 @@ td .badmark{color:#e5484d;font-weight:700}
         <label class="chk"><input type="checkbox" id="fmiss"> <span id="fmiss-t"></span></label>
       </div>
       <div class="tw"><table>
-        <thead><tr><th data-t="thSwitch"></th><th data-t="thPort"></th><th data-t="thConn"></th><th data-t="thPanel"></th><th data-t="thFloor"></th><th data-t="thRoom"></th><th data-t="thDevice"></th><th data-t="thName"></th><th data-t="thVlan"></th><th data-t="thNote"></th></tr></thead>
+        <thead><tr><th data-t="thSwitch"></th><th data-t="thPort"></th><th data-t="thConn"></th><th data-t="thPanel"></th><th data-t="thFloor"></th><th data-t="thRoom"></th><th data-t="thDevice"></th><th data-t="thName"></th><th data-t="thIp"></th><th data-t="thMac"></th><th data-t="thVlan"></th><th data-t="thMode"></th><th data-t="thPoe"></th><th data-t="thCid"></th><th data-t="thNote"></th></tr></thead>
         <tbody id="tb"></tbody>
       </table></div>
       <p class="empty" id="tbempty"></p>
@@ -378,7 +408,51 @@ const vlanText=k=>k==="all"?t("vlanAllShort"):k==="none"?t("vlanNone"):(vlanObj(
 const roomText=r=>r==="__later"?t("laterText"):r;
 const fKey=f=>f&&f!=="__later"?f:"";
 const isLater=d=>d.panel==="LATER"||d.floor==="__later"||d.room==="__later";
-const hasContent=d=>!!(d&&(d.room||d.type||d.name||d.conn||d.floor||d.note||d.vlan||d.bad));
+const hasContent=d=>!!(d&&(d.room||d.type||d.name||d.conn||d.floor||d.note||d.vlan||d.bad||d.ip||d.mac||d.mode||d.cid||d.poe||d.speed||d.admin));
+/* ---------- 3.1: IP / MAC / switchport fields, TIA-606 labels, checks ---------- */
+const RE_IP=/\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\/(?:3[0-2]|[12]?\d))?\b/;
+const RE_MAC=/\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b|\b[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\b/;
+const SPEEDS=["auto","10M","100M","1G","2.5G","5G","10G","25G","40G","100G"];
+const POES=[["none","—"],["af","802.3af (15.4 W)"],["at","802.3at PoE+ (30 W)"],["bt3","802.3bt Type 3 (60 W)"],["bt4","802.3bt Type 4 (90 W)"]];
+// The old single field "name / IP / MAC" is split once: an IPv4 and a MAC found in it move to their own fields.
+function splitName(n){let name=String(n||""),ip="",mac="";const mi=name.match(RE_IP),mm=name.match(RE_MAC);
+  if(!mi&&!mm)return null;if(mi){ip=mi[0];name=name.replace(mi[0]," ")}if(mm){mac=mm[0];name=name.replace(mm[0]," ")}
+  name=name.replace(/\s*[·•|,;\/]+\s*(?=[·•|,;\/]|$)/g," ").replace(/^[\s·•|,;\/–-]+|[\s·•|,;\/–-]+$/g,"").replace(/\s{2,}/g," ").trim();
+  return {name,ip,mac}}
+const ipInt=s=>{const m=String(s||"").split("/")[0].split(".");if(m.length!==4)return null;let v=0;for(const x of m){const n=+x;if(!/^\d+$/.test(x)||n>255)return null;v=v*256+n}return v>>>0};
+const inSubnet=(ip,cidr)=>{const [n,b]=String(cidr||"").split("/"),a=ipInt(ip),net=ipInt(n),p=+b;if(a===null||net===null||!(p>=0&&p<=32))return null;const m=p?(~0<<(32-p))>>>0:0;return ((a&m)>>>0)===((net&m)>>>0)};
+const normMac=m=>String(m||"").replace(/[^0-9a-f]/gi,"").toLowerCase();
+const vlanIdsOf=txt=>{const out=[];for(const part of String(txt||"").split(/[\s,;]+/).filter(Boolean)){const r=part.match(/^(\d+)(?:-(\d+))?$/);if(!r)return null;const a=+r[1],b=+(r[2]||r[1]);if(a<1||b>4094||b<a)return null;for(let i=a;i<=b&&out.length<5000;i++)out.push(i)}return out};
+// TIA-606 style identifier of the outlet / panel position: rack - panel - port
+function label606(r){const rk=rackOf(r.sw);if(!rk||!r.panel||["DIR","LATER"].includes(r.panel)||!r.pp)return "";return `${String(rk.name).replace(/\s+/g,"")}-${r.panel}-${String(r.pp).padStart(2,"0")}`}
+function checks(){
+  const W=[],ips={},macs={},cids={},vids=new Set(P.vlans.map(v=>String(v.vid)));
+  const nm=r=>`${swName(r.sw)} :${r.port}`;
+  for(const d of Object.values(P.ports)){if(!SW(d.sw)||!hasContent(d))continue;const r=rec(d.sw,d.port);
+    if(r.ip){if(ipInt(r.ip)===null)W.push(["err",t("ck_ip",{p:nm(r),v:r.ip}),r]);else{const k=r.ip.split("/")[0];if(ips[k])W.push(["err",t("ck_ipDup",{v:k,a:ips[k],b:nm(r)}),r]);ips[k]=nm(r);
+      const vo=vlanObj(r.mode==="trunk"?r.native:r.vlan);if(vo&&vo.sn){const ok=inSubnet(k,vo.sn);if(ok===false)W.push(["",t("ck_sub",{p:nm(r),v:k,vl:vo.vid,s:vo.sn}),r])}}}
+    if(r.mac){const m=normMac(r.mac);if(m.length!==12)W.push(["err",t("ck_mac",{p:nm(r),v:r.mac}),r]);else{if(macs[m])W.push(["err",t("ck_macDup",{v:r.mac,a:macs[m],b:nm(r)}),r]);macs[m]=nm(r)}}
+    if(r.cid){const c=r.cid.toLowerCase();if(cids[c])W.push(["err",t("ck_cidDup",{v:r.cid,a:cids[c],b:nm(r)}),r]);cids[c]=nm(r)}
+    if(r.mode==="trunk"&&r.allowed){const L=vlanIdsOf(r.allowed);if(L===null)W.push(["err",t("ck_allowed",{p:nm(r),v:r.allowed}),r]);else{const miss=[...new Set(L.filter(x=>!vids.has(String(x))))];if(miss.length&&miss.length<=20&&P.vlans.length)W.push(["",t("ck_unk",{p:nm(r),v:miss.join(", ")}),r])}}
+    if(r.mode==="access"&&(r.conn==="up"||r.conn==="sfp")&&r.peerSw)W.push(["",t("ck_accUp",{p:nm(r)}),r]);
+    if(isPeer(r.conn)&&r.peerSw&&`${r.sw}-${r.port}`<`${r.peerSw}-${r.peerPort}`){const o=rec(r.peerSw,r.peerPort);if(r.mode&&o.mode&&r.mode!==o.mode)W.push(["",t("ck_modeMis",{a:nm(r),b:nm(o)}),r]);
+      if(r.mode==="trunk"&&o.mode==="trunk"&&r.native&&o.native&&r.native!==o.native)W.push(["err",t("ck_native",{a:nm(r),b:nm(o)}),r]);
+      if(r.speed&&o.speed&&r.speed!=="auto"&&o.speed!=="auto"&&r.speed!==o.speed)W.push(["",t("ck_speed",{a:nm(r),b:nm(o),x:r.speed,y:o.speed}),r])}}
+  // a link is listed from both ends — keep each message once
+  const seen=new Set();return W.filter(w=>{const k=w[1];if(seen.has(k))return false;seen.add(k);return true})}
+function renderChecks(){const W=checks(),box=$("#checks");box.hidden=!W.length;if(!W.length)return;
+  $("#checks-t").textContent=t("ck_title",{n:W.length});
+  $("#checks-b").innerHTML=W.slice(0,60).map(([lv,m,r])=>`<div class="ck ${lv} click" data-sw="${r.sw}" data-port="${r.port}">${lv==="err"?"⛔":"⚠"} ${esc(m)}</div>`).join("")+(W.length>60?`<div class="ck">… +${W.length-60}</div>`:"")}
+$("#checks").addEventListener("click",e=>{const c=e.target.closest(".ck[data-sw]");if(c){select(c.dataset.sw,+c.dataset.port);if(!matchMedia("(max-width:900px)").matches)window.scrollTo({top:0})}});
+function exportCsv(){
+  const H=[t("thSwitch"),t("thPort"),t("thConn"),t("fPeerSw"),t("fPeerPort"),t("thPanel"),t("fPanelPort"),t("thLabel"),t("thCid"),t("thFloor"),t("thRoom"),t("thDevice"),t("thName"),"IP","MAC","VLAN",t("fMode"),t("fNative"),t("fAllowed"),t("fSpeed"),"PoE",t("fAdmin"),t("fBad"),t("thNote")];
+  const rows=Object.values(P.ports).filter(d=>SW(d.sw)&&hasContent(d)).map(d=>rec(d.sw,d.port)).sort((a,b)=>P.switches.indexOf(SW(a.sw))-P.switches.indexOf(SW(b.sw))||a.port-b.port)
+    .map(r=>[swName(r.sw),r.port,connName(r.conn),isPeer(r.conn)&&r.peerSw?swName(r.peerSw):"",r.peerPort||"",r.panel==="DIR"?t("optDirect"):r.panel==="LATER"?t("optLater"):r.panel,r.pp,label606(r),r.cid,floorName(r.floor),roomText(r.room),typeObj(r.type)?.n||"",r.name,r.ip,r.mac,vlanText(r.vlan),r.mode?t("md_"+r.mode):"",r.native?vlanText(r.native):"",r.allowed,r.speed,r.poe?(POES.find(x=>x[0]===r.poe)||["",""])[1]:"",r.admin==="down"?t("ad_down"):"",r.bad?"✓":"",r.note]);
+  const q=v=>{const x=String(v??"");return /[;"\n]/.test(x)?`"${x.replace(/"/g,'""')}"`:x};
+  const text="\ufeff"+[H,...rows].map(r=>r.map(q).join(";")).join("\r\n");
+  const name=`${fileSafe(P.name)} ${new Date().toISOString().slice(0,10)}.csv`;
+  if(matchMedia("(pointer:coarse)").matches&&navigator.canShare){try{const f=new File([text],name,{type:"text/csv"});if(navigator.canShare({files:[f]})){navigator.share({files:[f],title:name}).catch(()=>{});setStatus(t("csvOk"));return}}catch(_){}}
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:"text/csv"}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),3000);setStatus(t("csvOk"))}
 const DKINDS=["switch","firewall","router","nvr","server","ups","pdu","modem","other"];
 const DPORTS={switch:24,firewall:8,router:4,nvr:4,server:2,ups:0,pdu:0,modem:4,other:0};
 const kindName=k=>t("dk_"+(k||"switch"));
@@ -397,7 +471,8 @@ function defSwPort(sw,panel,pp){let st=1;for(const x of nearPanels(sw.id)){if(x.
 function panelUser(rk,pid,pp,excl){const ids=swIdsIn(rk);for(const [k,d] of Object.entries(P.ports)){if(k===excl)continue;if(ids.includes(d.sw)&&d.panel===pid&&+d.pp===+pp)return {sw:d.sw,port:d.port}}return null}
 function rec(swId,p){const sw=SW(swId),r=P.ports[swId+"-"+p]||{};let d={panel:r.panel,pp:r.pp||""};
   if(r.panel===undefined){d=defPanel(sw,p);if(d.panel&&panelUser(rackOf(swId),d.panel,d.pp))d={panel:"",pp:""}}
-  return {sw:swId,port:p,conn:r.conn||"",panel:d.panel||"",pp:d.panel?d.pp:"",floor:r.floor||"",room:r.room||"",type:r.type||"",name:r.name||"",vlan:r.vlan||"",note:r.note||"",peerSw:r.peerSw||"",peerPort:r.peerPort||"",bad:!!r.bad}}
+  return {sw:swId,port:p,conn:r.conn||"",panel:d.panel||"",pp:d.panel?d.pp:"",floor:r.floor||"",room:r.room||"",type:r.type||"",name:r.name||"",vlan:r.vlan||"",note:r.note||"",peerSw:r.peerSw||"",peerPort:r.peerPort||"",bad:!!r.bad,
+  ip:r.ip||"",mac:r.mac||"",mode:r.mode||"",native:r.native||"",allowed:r.allowed||"",speed:r.speed||"",poe:r.poe||"",admin:r.admin||"",cid:r.cid||""}}
 function panelOwner(rk,pid,pp){const u=panelUser(rk,pid,pp);if(u)return u;
   for(const s of rackSw(rk)){const d=defSwPort(s,pid,pp);if(d&&d<=s.ports&&!P.ports[s.id+"-"+d])return {sw:s.id,port:d}}return null}
 const panelText=r=>r.panel==="DIR"?t("directText"):r.panel==="LATER"?t("laterText"):r.panel?`${r.panel} :${r.pp}`:"";
@@ -441,7 +516,7 @@ function switchUnitHtml(s,rk,idx){
   const lbl=`<div class="lbl" title="${esc(s.name)} · ${esc(t("dragUnit"))}">${esc(s.name)}<small>${esc(sub)}</small>${umBtn(rk,idx)}</div>`;
   if(!s.ports)return `<div class="unit switch dev" data-sw="${s.id}" data-uidx="${idx}">${lbl}<div class="devbar"><i></i><i class="a"></i><span>${esc(kindName(s.kind))}</span></div></div>`;
   const spk=selPeer();const btn=p=>{const r=rec(s.id,p);const c=portColor(r);
-    return `<button class="p${c?" on":""}${r.panel==="DIR"?" dir":""}${isLater(r)?" later":""}${r.bad&&hasContent(P.ports[s.id+"-"+p])?" bad":""}${isSel(s.id,p)?" sel":""}${spk===s.id+"-"+p?" hl":""}" style="${c?"background:"+c:""}" data-sw="${s.id}" data-port="${p}" title="${esc(s.name)} :${p}">${p}</button>`};
+    return `<button class="p${c?" on":""}${r.panel==="DIR"?" dir":""}${isLater(r)?" later":""}${r.bad&&hasContent(P.ports[s.id+"-"+p])?" bad":""}${r.admin==="down"?" down":""}${isSel(s.id,p)?" sel":""}${spk===s.id+"-"+p?" hl":""}" style="${c?"background:"+c:""}" data-sw="${s.id}" data-port="${p}" title="${esc(s.name)} :${p}">${p}</button>`};
   // "oe": odd ports on the top row, even on the bottom, in blocks of 12 (like most switches). "seq": row by row.
   let sp;if((s.layout||"oe")==="oe"){sp=`<div class="swports">`;for(let b=1;b<=s.ports;b+=12){const n=Math.min(12,s.ports-b+1),cols=Math.ceil(n/2);let h="";for(let p=b;p<b+n;p++)h+=btn(p);
       sp+=`<div class="blk">${h}</div>`}sp+=`</div>`}
@@ -708,6 +783,17 @@ function renderSide(){
      <p class="hint" id="vlanhint"${r.vlan==="all"?"":" hidden"}>${esc(P.vlans.length?t("vlanAllHint",{list:vlanList()}):t("vlanAllNone"))}</p>
      <div class="newbox" id="nb-vlan" hidden><input id="f-vlan-id" placeholder="${esc(t("phVlanId"))}" style="flex:0 0 80px"><input id="f-vlan-n" placeholder="${esc(t("phVlanName"))}"><input id="f-vlan-s" placeholder="${esc(t("phVlanSubnet"))}"></div>
      <label>${t("fName")}<input id="f-name" value="${esc(r.name)}" placeholder="${esc(t("phDevName"))}"></label>
+     <div class="row"><label>IP<input id="f-ip" value="${esc(r.ip)}" placeholder="10.0.20.14" inputmode="decimal" autocomplete="off"></label><label>MAC<input id="f-mac" value="${esc(r.mac)}" placeholder="00:11:22:33:44:55" autocomplete="off"></label></div>
+     <details class="adv"${r.mode||r.speed||r.poe||r.admin||r.cid?" open":""}><summary>${t("advTitle")}</summary>
+       <div class="row"><label>${t("fMode")}<select id="f-mode">${opt("",t("optNone"),r.mode)}${opt("access",t("md_access"),r.mode)}${opt("trunk",t("md_trunk"),r.mode)}</select></label>
+         <label>${t("fAdmin")}<select id="f-admin">${opt("",t("ad_up"),r.admin)}${opt("down",t("ad_down"),r.admin)}</select></label></div>
+       <div class="row" id="trunkrow"${r.mode==="trunk"?"":" hidden"}><label>${t("fNative")}<select id="f-native">${opt("",t("optNone"),r.native)}${P.vlans.map(v=>opt(v.k,`${v.vid} · ${v.n}`,r.native)).join("")}</select></label>
+         <label>${t("fAllowed")}<input id="f-allowed" value="${esc(r.allowed)}" placeholder="10,20,30-40"></label></div>
+       <div class="row"><label>${t("fSpeed")}<select id="f-speed">${opt("",t("optNone"),r.speed)}${SPEEDS.map(x=>opt(x,x==="auto"?t("spAuto"):x,r.speed)).join("")}</select></label>
+         <label>PoE<select id="f-poe">${opt("",t("optNone"),r.poe)}${POES.map(([k,l])=>opt(k,l,r.poe)).join("")}</select></label></div>
+       <label>${t("fCid")}<input id="f-cid" value="${esc(r.cid)}" placeholder="${esc(label606(r)||t("phCid"))}"></label>
+       ${label606(r)?`<p class="hint lbl606">${esc(t("lblHint",{l:label606(r)}))}</p>`:""}
+     </details>
      <label>${t("fNote")}<textarea id="f-note" rows="2">${esc(r.note)}</textarea></label>
      <div class="btns"><button class="b pri" type="submit">${t("save")}</button><button class="b" type="button" id="clr">${t("clearPort")}</button><button class="b" type="button" id="cancel">${t("cancel")}</button></div>
      <div class="msg" id="msg"></div>
@@ -726,6 +812,7 @@ function renderSide(){
   $("#cancel").addEventListener("click",closeCard);$("#sclose").addEventListener("click",closeCard);
   $("#f").addEventListener("keydown",e=>{if(e.key==="Escape"&&!pop&&!document.querySelector(".modal-bg")){e.preventDefault();closeCard()}});
   $("#f-vlan").addEventListener("change",e=>{$("#vlanhint").hidden=e.target.value!=="all"});
+  $("#f-mode").addEventListener("change",e=>{$("#trunkrow").hidden=e.target.value!=="trunk"});
   $("#f").addEventListener("submit",e=>{e.preventDefault();submitCard()});
   ["#f-conn","#f-panel","#f-floor","#f-room","#f-type","#f-vlan"].forEach(id=>enhance($(id)));
   // Enter saves the card from any field (Ctrl+Enter inside the note).
@@ -836,9 +923,14 @@ function submitCard(){
   let vlan=$("#f-vlan").value;if(!vlan&&isPeer(conn))vlan="all";
   if(vlan==="__new"){const id=v("#f-vlan-id"),n=v("#f-vlan-n");if(!id||!n)return fail("errVlanNew","#f-vlan-id");
     const ex=P.vlans.find(x=>same(x.vid,id));if(ex)vlan=ex.k;else{pend.vlan={k:uid("v"),vid:id,n,sn:v("#f-vlan-s")};vlan=pend.vlan.k}}
+  if(v("#f-ip")&&ipInt(v("#f-ip"))===null)return fail("errIp","#f-ip");
+  if(v("#f-mac")&&normMac(v("#f-mac")).length!==12)return fail("errMac","#f-mac");
+  if($("#f-mode").value==="trunk"&&v("#f-allowed")&&vlanIdsOf(v("#f-allowed"))===null)return fail("errAllowed","#f-allowed");
   const peer=isPeer(conn)&&+$("#f-pport").value;
   save({sw:tsw.id,port:Math.min(tsw.ports,Math.max(1,+$("#f-port").value||1)),conn,panel,pp,floor,room,type,vlan,
-    name:v("#f-name"),note:$("#f-note").value.trim(),bad:$("#f-bad").checked,peerSw:peer?$("#f-psw").value:"",peerPort:peer?+$("#f-pport").value:""},pend);
+    name:v("#f-name"),note:$("#f-note").value.trim(),bad:$("#f-bad").checked,peerSw:peer?$("#f-psw").value:"",peerPort:peer?+$("#f-pport").value:"",
+    ip:v("#f-ip"),mac:v("#f-mac"),mode:$("#f-mode").value,native:$("#f-mode").value==="trunk"?$("#f-native").value:"",allowed:$("#f-mode").value==="trunk"?v("#f-allowed"):"",
+    speed:$("#f-speed").value,poe:$("#f-poe").value,admin:$("#f-admin").value,cid:v("#f-cid")},pend);
 }
 function applyPend(pend){
   if(pend.conn)P.conns.push(pend.conn);if(pend.floor)P.floors.push(pend.floor);if(pend.type)P.types.push(pend.type);if(pend.vlan)P.vlans.push(pend.vlan);
@@ -893,12 +985,14 @@ function renderTable(){
   $("#fbad-t").textContent=t("badFilter",{n:Object.values(P.ports).filter(d=>d.bad&&SW(d.sw)).length});
   $("#flater-t").textContent=t("laterFilter",{n:Object.values(P.ports).filter(isLater).length});
   const rows=Object.values(P.ports).filter(d=>SW(d.sw)&&hasContent(d)&&(!fs||d.sw===fs)&&(!onlyLater||isLater(d))&&(!onlyBad||d.bad)).map(d=>rec(d.sw,d.port)).filter(r=>!onlyMiss||missing(r).length)
-    .filter(r=>!q||[floorName(r.floor),roomText(r.room),r.name,r.vlan==="all"?"ALL "+P.vlans.map(v=>v.vid+" "+v.n).join(" "):vlanText(r.vlan),r.note,typeObj(r.type)?.n,connName(r.conn),isPeer(r.conn)&&r.peerSw?swName(r.peerSw):""].join(" ").toLowerCase().includes(q))
+    .filter(r=>!q||[floorName(r.floor),roomText(r.room),r.name,r.ip,r.mac,r.cid,label606(r),r.allowed,r.vlan==="all"?"ALL "+P.vlans.map(v=>v.vid+" "+v.n).join(" "):vlanText(r.vlan),r.note,typeObj(r.type)?.n,connName(r.conn),isPeer(r.conn)&&r.peerSw?swName(r.peerSw):""].join(" ").toLowerCase().includes(q))
     .sort((a,b)=>P.switches.indexOf(SW(a.sw))-P.switches.indexOf(SW(b.sw))||a.port-b.port);
   $("#tbempty").hidden=rows.length>0;
   $("#tbempty").textContent=Object.keys(P.ports).length?t("tNoMatch"):t("tEmpty");
   const M=(v,html)=>v?html:MISS.replace('title=""',`title="${esc(t("optNone"))}"`);
-  $("#tb").innerHTML=rows.map(r=>{const ty=typeObj(r.type);return `<tr class="click" data-sw="${r.sw}" data-port="${r.port}"><td>${r.bad?`<span class="badmark" title="${esc(t("fBad"))}">⚠ </span>`:""}${esc(swName(r.sw))}</td><td class="mono">${r.port}</td><td>${M(r.conn,esc(connName(r.conn))+(isPeer(r.conn)&&r.peerSw?" → "+esc(swName(r.peerSw))+" :"+r.peerPort:""))}</td><td class="mono">${M(r.panel,esc(panelText(r)))}</td><td>${M(r.floor,esc(floorName(r.floor)))}</td><td>${M(r.room,esc(roomText(r.room)))}</td><td>${!ty&&isPeer(r.conn)&&r.peerSw?`<span class="tag"><i class="sw" style="background:var(--link)"></i>⇄ ${esc(swName(r.peerSw))}</span>`:M(ty,ty?`<span class="tag"><i class="sw" style="background:${esc(ty.c)}"></i>${esc(ty.n)}</span>`:"")}</td><td class="mono">${esc(r.name)}</td><td class="mono">${r.vlan==="all"?`<span title="${esc(t("vlanAllHint",{list:vlanList()}))}">${esc(t("vlanAllShort"))}</span>`:M(r.vlan,esc(vlanText(r.vlan)))}</td><td>${esc(r.note)}</td></tr>`}).join("");
+  const cnt={};Object.values(P.ports).forEach(d=>{if(d.ip&&SW(d.sw)){const k=d.ip.split("/")[0];cnt[k]=(cnt[k]||0)+1}});const dupIp=new Set(Object.keys(cnt).filter(k=>cnt[k]>1));
+  $("#tb").innerHTML=rows.map(r=>{const ty=typeObj(r.type);return `<tr class="click" data-sw="${r.sw}" data-port="${r.port}"><td>${r.bad?`<span class="badmark" title="${esc(t("fBad"))}">⚠ </span>`:""}${esc(swName(r.sw))}</td><td class="mono">${r.port}</td><td>${M(r.conn,esc(connName(r.conn))+(isPeer(r.conn)&&r.peerSw?" → "+esc(swName(r.peerSw))+" :"+r.peerPort:""))}</td><td class="mono">${M(r.panel,esc(panelText(r)))}</td><td>${M(r.floor,esc(floorName(r.floor)))}</td><td>${M(r.room,esc(roomText(r.room)))}</td><td>${!ty&&isPeer(r.conn)&&r.peerSw?`<span class="tag"><i class="sw" style="background:var(--link)"></i>⇄ ${esc(swName(r.peerSw))}</span>`:M(ty,ty?`<span class="tag"><i class="sw" style="background:${esc(ty.c)}"></i>${esc(ty.n)}</span>`:"")}</td><td class="mono">${esc(r.name)}</td><td class="mono nw">${esc(r.ip)}${dupIp.has(r.ip.split("/")[0])&&r.ip?' <span class="dupmark" title="dup">⚠</span>':""}</td><td class="mono nw">${esc(r.mac)}</td><td class="mono">${r.vlan==="all"?`<span title="${esc(t("vlanAllHint",{list:vlanList()}))}">${esc(t("vlanAllShort"))}</span>`:M(r.vlan,esc(vlanText(r.vlan)))}</td><td class="mono nw">${r.mode?esc(t("md_"+r.mode))+(r.mode==="trunk"?`<br><span class="lbl606">N:${esc(r.native?vlanText(r.native):"—")} · ${esc(r.allowed||t("vlanAllShort"))}</span>`:""):""}${r.admin==="down"?` <span class="dupmark">${esc(t("ad_downS"))}</span>`:""}</td><td class="mono nw">${esc([r.speed,r.poe&&r.poe!=="none"?"PoE "+r.poe:""].filter(Boolean).join(" · "))}</td><td class="mono nw">${esc(r.cid||label606(r))}</td><td>${esc(r.note)}</td></tr>`}).join("");
+  renderChecks();
 }
 $("#tb").addEventListener("click",e=>{const tr=e.target.closest("tr");if(tr){select(tr.dataset.sw,+tr.dataset.port);if(!matchMedia("(max-width:900px)").matches)window.scrollTo({top:0})}});
 $("#q").addEventListener("input",renderTable);$("#fsw").addEventListener("change",renderTable);$("#flater").addEventListener("change",renderTable);$("#fbad").addEventListener("change",renderTable);$("#fmiss").addEventListener("change",renderTable);
@@ -952,6 +1046,8 @@ function downloadFile(name,text){const a=document.createElement("a");a.href=URL.
 const fileSafe=s=>s.replace(/[\\/:*?"<>|]+/g,"-").trim()||"building";
 $("#btn-exp").addEventListener("click",()=>{download(`${fileSafe(P.name)} ${new Date().toISOString().slice(0,10)}.portmap.json`,JSON.stringify({type:"portmap-project",version:2,exported:new Date().toISOString(),project:P},null,2));setStatus(t("exportOk"))});
 $("#btn-imp").addEventListener("click",()=>$("#imp").click());
+$("#btn-csv").addEventListener("click",exportCsv);
+$("#btn-print").addEventListener("click",()=>{const l=$("#legwrap"),was=l.open;l.open=true;sel=null;renderRacks();renderSide();setTimeout(()=>{window.print();l.open=was},50)});
 // Converts an export from the first (Villa 2) version of the tool.
 function fromV1(p){
   const q=newProject(p.name);q.id=p.id||q.id;q.switches=clone(p.config.switches||[]);
@@ -974,6 +1070,7 @@ function normalize(p){const q=p.config?fromV1(p):clone(p);for(const k of ["switc
   for(const [k,d] of Object.entries(q.ports))if((d.conn==="up"||d.conn==="sfp")&&!d.vlan)q.ports[k]={...d,vlan:"all"};q.switches.forEach(x=>{x.layout=x.layout||"oe";x.kind=x.kind||"switch"});
   // older versions kept patch panels on each switch: give every switch its own rack cabinet
   if(!Array.isArray(q.racks)||(!q.racks.length&&q.switches.length))q.racks=q.switches.map(s=>{const pn=s.panels||[],u=x=>({t:"p",id:x.id,ports:x.ports});return {id:uid("r"),name:s.name,units:[...pn.filter(x=>x.pos==="top").map(u),{t:"s",sw:s.id},...pn.filter(x=>x.pos!=="top").map(u)]}});
+  for(const [k,d] of Object.entries(q.ports))if(d&&d.ip===undefined&&d.mac===undefined){const x=splitName(d.name);q.ports[k]=x?{...d,...x}:{...d,ip:"",mac:""}}
   for(const s of q.switches){delete s.panels;if(!q.racks.some(r=>r.units.some(x=>x.t==="s"&&x.sw===s.id)))q.racks.push({id:uid("r"),name:s.name,units:[{t:"s",sw:s.id}]})}q.name=q.name||t("firstBuilding");return q}
 $("#imp").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();
   rd.onload=()=>{try{const j=JSON.parse(rd.result);const list=j.type==="portmap-project"?[j.project]:j.projects?Object.values(j.projects):[];
@@ -1137,6 +1234,9 @@ $("#btn-new").addEventListener("click",showNew);
 
 function renderAll(){renderLegend();renderRacks();renderTable();renderRooms();renderSide()}
 store=loadStore();LANG=pickLang();
+// 3.1: before the one-time split of "name / IP / MAC", keep a copy of the 3.0 data in the browser
+if(!NATIVE&&Object.values(store.projects).some(p=>Object.values(p.ports||{}).some(d=>d&&d.name&&d.ip===undefined&&d.mac===undefined&&(RE_IP.test(d.name)||RE_MAC.test(d.name)))))
+  try{if(!localStorage.getItem(KEY+".backup-3.0"))localStorage.setItem(KEY+".backup-3.0",localStorage.getItem(KEY))}catch(_){}
 for(const id of Object.keys(store.projects))store.projects[id]=normalize(store.projects[id]);
 P=store.projects[store.current];lastSnap=snap();
 applyStatic();renderBar();renderAll();
