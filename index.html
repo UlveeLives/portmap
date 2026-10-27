@@ -1,0 +1,1154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#232a33">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Port Map">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Port Map</title>
+<link rel="icon" href="portmap.ico">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: top bar with building controls; one rack per switch (top panels → switch → bottom panels); port card on the right; table and rooms below. */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --ink:#18212b; --muted:#5b6774; --line:#d3d9e0;
+  --rack:#232a33; --rack-2:#2e3742; --port:#3b4652; --port-ink:#c9d2db;
+  --accent:#1f6fd1; --accent-soft:#dbe8f9; --link:#e0b51b; --filled:#6b7a8c; --danger:#b3262f;
+  --f-disp:"Barlow Condensed","Bahnschrift SemiCondensed","Bahnschrift","Arial Narrow",sans-serif;
+  --f-body:"Barlow","Segoe UI",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono","Cascadia Mono",Consolas,ui-monospace,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#12171d; --surface:#1a2129; --ink:#e4e9ee; --muted:#93a0ad; --line:#2c353f;
+  --rack:#0b0f13; --rack-2:#161c23; --port:#2a333d; --port-ink:#aeb9c4;
+  --accent:#5b9bef; --accent-soft:#1b2c42; --filled:#56657a; --danger:#e0605a; color-scheme:dark }}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;padding:max(20px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(40px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+.wrap{max-width:1240px;margin:0 auto;display:grid;gap:20px}
+header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:end;justify-content:space-between}
+h1{font-family:var(--f-disp);font-weight:700;font-size:34px;letter-spacing:.01em;margin:0;line-height:1;text-wrap:balance}
+.sub{color:var(--muted);margin:6px 0 0;max-width:64ch}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.bar select{width:auto;max-width:240px;font-weight:600}
+.bar select.langsel{font-weight:500}
+.status{font-family:var(--f-mono);font-size:12px;color:var(--muted);width:100%;text-align:right;overflow-wrap:anywhere}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted);align-items:center}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend .sep{width:1px;height:14px;background:var(--line)}
+.sw{width:12px;height:12px;border-radius:3px;display:inline-block;flex:none}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:20px;align-items:start}
+@media (max-width:900px){.main{grid-template-columns:minmax(0,1fr)}}
+.racks{display:grid;gap:20px;min-width:0}
+.rack{background:var(--rack);border-radius:10px;padding:12px;display:grid;gap:6px;min-width:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
+.rack-title{display:flex;justify-content:space-between;align-items:baseline;gap:10px;color:#e8edf2;padding:0 2px 4px}
+.rack-title b{font-family:var(--f-disp);font-size:22px;letter-spacing:.04em;font-weight:700;overflow-wrap:anywhere}
+.rack-title small{font-family:var(--f-mono);font-size:11px;color:#8f9ba8;white-space:nowrap}
+.unit{background:var(--rack-2);border-radius:6px;padding:8px 10px;display:grid;grid-template-columns:78px minmax(0,1fr);gap:10px;align-items:center}
+.unit.switch .lbl{font-size:13px;letter-spacing:.03em}
+.unit .lbl{font-family:var(--f-disp);font-weight:600;font-size:15px;color:#cfd8e1;letter-spacing:.06em;line-height:1.05;overflow-wrap:anywhere}
+.unit .lbl small{display:block;font-family:var(--f-mono);font-size:9.5px;color:#7f8b98;letter-spacing:0;margin-top:2px;font-weight:400}
+.unit.switch{background:linear-gradient(180deg,#3a4552,#2b343e)}
+.grid{display:grid;grid-template-columns:repeat(var(--cols,24),minmax(0,1fr));gap:3px;max-width:calc(var(--cols,24) * 42px)}
+@media (max-width:700px){.grid{grid-template-columns:repeat(var(--mcols,12),minmax(0,1fr))}}
+.p{appearance:none;border:0;padding:0;cursor:pointer;aspect-ratio:1/1.05;border-radius:3px;background:var(--port);color:var(--port-ink);font-family:var(--f-mono);font-size:9px;font-weight:600;display:grid;place-items:center;position:relative;min-width:0}
+.p.on{color:#fff}
+.p:hover{filter:brightness(1.2)}
+.p:focus-visible{outline:2px solid #fff;outline-offset:1px}
+.p.sel{outline:2px solid #fff;outline-offset:1px;z-index:1}
+.p.hl{box-shadow:0 0 0 2px #fff}
+.p.dir::after,.dot::after{content:"";position:absolute;top:2px;right:2px;width:4px;height:4px;border-radius:50%;background:#fff}
+.dot{width:12px;height:12px;border-radius:3px;background:var(--port);position:relative;display:inline-block}
+.p.later::before,.later-k::before{content:"";position:absolute;inset:2px;border:1.5px dashed rgba(255,255,255,.9);border-radius:2px}
+.later-k{background:var(--port);position:relative}
+.side{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:14px;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+.legwrap>summary{display:none}
+.sclose{display:none}
+#racks{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+@media (max-width:900px){
+  body{padding-top:max(12px,env(safe-area-inset-top))}
+  .wrap{gap:14px}
+  h1{font-size:26px}
+  .sub{display:none}
+  header{align-items:start}
+  .status{text-align:left}
+  .legwrap>summary{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);list-style:none}
+  .legwrap>summary::-webkit-details-marker{display:none}
+  .legwrap[open]>summary{margin-bottom:8px}
+  /* port card: bottom sheet in portrait, side panel in landscape */
+  .side{position:fixed;left:0;right:0;bottom:0;top:auto;z-index:40;max-height:72vh;overflow:auto;border-radius:14px 14px 0 0;border-width:1px 0 0;box-shadow:0 -10px 30px rgba(0,0,0,.28);
+    padding:14px max(16px,env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));transform:translateY(105%);transition:transform .2s ease;visibility:hidden}
+  .side.open{transform:none;visibility:visible}
+  .side h2{padding-right:40px}
+  .sclose{display:grid;position:absolute;top:10px;right:max(12px,env(safe-area-inset-right));width:34px;height:34px;font-size:20px}
+  body.cardopen #v-map{padding-bottom:40vh}
+}
+@media (max-width:900px) and (orientation:landscape){
+  .side{left:auto;top:0;bottom:0;width:min(390px,50vw);max-height:none;border-radius:14px 0 0 14px;border-width:0 0 0 1px;transform:translateX(105%);
+    padding:max(14px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) 16px}
+  body.cardopen #v-map{padding-bottom:0}
+}
+@media (max-width:600px){
+  .unit{grid-template-columns:minmax(0,1fr);gap:6px}
+  .unit .lbl{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .unit .lbl small{margin:0}
+  .rack{padding:10px}
+  .rack-title b{font-size:19px}
+  .rack-title{align-items:center}
+}
+@media (prefers-reduced-motion:reduce){.side{transition:none}}
+.side h2,.card h2{font-family:var(--f-disp);font-size:24px;margin:0;font-weight:700}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-family:var(--f-mono);font-size:12px}
+.flow .n{background:var(--accent-soft);color:var(--ink);padding:4px 8px;border-radius:4px}
+.flow .a{color:var(--muted)}
+form{display:grid;gap:10px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:500}
+input,select,textarea{font:inherit;font-size:14px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;min-width:0}
+input[type=color]{padding:2px;height:34px;width:46px;flex:none}
+textarea{resize:vertical}
+input:disabled{opacity:.45}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:0;border-color:transparent}
+.newbox{display:flex;gap:6px;align-items:center;padding:8px;border:1px dashed var(--accent);border-radius:6px;background:var(--accent-soft)}
+.newbox input,.newbox select{background:var(--surface)}
+.btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.b{font:inherit;font-weight:600;font-size:14px;border-radius:6px;padding:8px 14px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink);display:inline-flex;align-items:center;gap:6px;line-height:1.2}
+.b.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.b.sm{padding:5px 10px;font-size:13px}
+.b.danger{border-color:var(--danger);color:var(--danger)}
+.b:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.b:disabled{opacity:.5;cursor:not-allowed}
+.msg{font-size:13px;color:var(--muted);min-height:1.2em}
+.empty{color:var(--muted);font-size:14px;margin:0}
+.card,.tablebox{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:12px;min-width:0}
+.card.welcome{border-style:dashed;text-align:left}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tools input{max-width:260px}
+.tools select{max-width:190px}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:860px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.03em}
+td.mono{font-family:var(--f-mono);font-size:13px;font-variant-numeric:tabular-nums}
+tr.click{cursor:pointer} tr.click:hover td{background:var(--accent-soft)}
+.tag{display:inline-flex;align-items:center;gap:6px}
+h3{font-family:var(--f-disp);font-size:20px;margin:0;font-weight:700}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink)}
+.chk input{width:auto}
+.links{display:grid;gap:6px;padding:10px 12px;border:2px dashed var(--link);border-radius:10px;background:var(--surface)}
+.links .lt{font-family:var(--f-mono);font-size:11px;color:var(--muted);letter-spacing:.05em}
+.lk{appearance:none;font-family:var(--f-mono);font-size:12px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer;text-align:left}
+.lk:hover{border-color:var(--link)}
+.lk .n{background:var(--link);color:#1f1a05;padding:2px 6px;border-radius:4px;font-weight:600}
+.lk .c{flex:1 1 24px;min-width:16px;height:3px;border-radius:2px;background:var(--link)}
+.lk .ct{color:var(--muted)}
+.addsw{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
+.addsw label{flex:1 1 160px}
+.addsw label.narrow{flex:0 1 110px}
+.ri{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.ri:last-child{border-bottom:0}
+.ri .nm{font-weight:600;margin-right:auto;min-width:0;overflow-wrap:anywhere}
+.ri .ct{font-family:var(--f-mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.rg{margin:14px 0 2px;font-family:var(--f-mono);font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.05em}
+.rg:first-child{margin-top:0}
+.setgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:20px;align-items:start}
+.lrow{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+.lrow input{flex:1 1 auto}
+.lrow input.vid{flex:0 0 72px}
+.lrow .bi{flex:1 1 auto;font-size:14px;padding:7px 9px;color:var(--muted)}
+.swblock{border:1px solid var(--line);border-radius:8px;padding:12px;display:grid;gap:10px;background:var(--bg)}
+.swblock input,.swblock select{background:var(--surface)}
+.swhead{display:grid;grid-template-columns:minmax(0,1fr) 110px minmax(0,1.4fr) auto;gap:8px;align-items:end}
+@media (max-width:700px){.swhead{grid-template-columns:1fr 1fr}}
+.rack{position:relative}
+.swports{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;max-width:1040px}
+@media (max-width:700px){.swports{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.blk{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:repeat(2,auto);grid-auto-flow:column;gap:3px}
+.cords{position:absolute;left:0;top:0;pointer-events:none;overflow:visible;z-index:2}
+.cords path{fill:none;stroke-width:1.6;stroke-linecap:round;opacity:.72}
+.cords.dim path{opacity:.16}
+.cords path.on,.cords path.hv,.cords.dim path.hv{stroke-width:3.2;opacity:1}
+body.dragging,body.dragging *{cursor:grabbing!important;user-select:none}
+.unit.switch .p.on{cursor:grab}
+.p.drop{outline:2px dashed #fff;outline-offset:2px;z-index:3}
+.p.dragsrc{opacity:.45}
+#ghost{position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:50;overflow:visible}
+#ghost path{fill:none;stroke-width:3;stroke-linecap:round}
+#ghost circle{stroke:#fff;stroke-width:2}
+#draglbl{position:fixed;z-index:51;pointer-events:none;background:var(--ink);color:var(--bg);font-family:var(--f-mono);font-size:12px;padding:4px 8px;border-radius:4px;white-space:nowrap}
+.langcard{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
+.langcard label{flex:0 1 260px}
+.pk{position:relative}
+.pk-btn{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;font:inherit;font-size:14px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px;cursor:pointer;text-align:left;min-width:0}
+.pk-btn:focus-visible,.pk-btn.open{outline:2px solid var(--accent);outline-offset:0;border-color:transparent}
+.pk-val{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px;min-width:0}
+.pk-car{color:var(--muted);font-size:11px;flex:none}
+.pk-pop{position:fixed;z-index:60;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.2);overflow:auto;padding:4px;display:grid;gap:1px}
+.pk-it{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:5px;cursor:pointer;font-size:14px;color:var(--ink)}
+.pk-it:hover,.pk-it.act{background:var(--accent-soft)}
+.pk-it[aria-selected=true]{font-weight:600}
+.pk-it .lb{flex:1;min-width:0;overflow-wrap:anywhere;display:flex;align-items:center;gap:6px}
+.pk-it.spec .lb{color:var(--muted)}
+.pk-del{appearance:none;flex:none;width:20px;height:20px;border-radius:50%;border:0;background:#d93a3a;color:#fff;font:700 16px/1 var(--f-body);padding:0 0 2px;cursor:pointer;display:grid;place-items:center}
+.pk-del:hover,.pk-del:focus-visible{background:#a8202a;outline:2px solid #d93a3a;outline-offset:1px}
+.modal-bg{position:fixed;inset:0;background:rgba(10,14,18,.5);display:grid;place-items:center;z-index:100;padding:16px}
+.modal{background:var(--surface);color:var(--ink);border-radius:12px;padding:20px;max-width:430px;width:100%;display:grid;gap:12px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+.modal h3{font-size:22px}
+.modal p{margin:0;color:var(--muted)}
+.b.danger-fill{background:var(--danger);border-color:var(--danger);color:#fff}
+.rt-l{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+.rt-r{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.rk-btn{appearance:none;border:1px solid rgba(255,255,255,.2);background:transparent;color:#cfd8e1;border-radius:6px;padding:3px 9px;font:inherit;font-size:13px;line-height:1.3;cursor:pointer}
+.rk-btn:hover{background:rgba(255,255,255,.08)}
+.rk-btn:focus-visible{outline:2px solid #fff;outline-offset:1px}
+.rk-ren{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.rk-ren input{width:auto;min-width:200px;background:var(--surface)}
+.rk-empty{color:#8f9ba8;padding:6px 2px;margin:0}
+.unitform{background:var(--surface);color:var(--ink);border-radius:8px;padding:12px;display:grid;gap:8px}
+.uf-row{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
+.uf-row label{flex:1 1 150px}
+.uf-row label.narrow{flex:0 1 90px}
+.urow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.urow select.kindsel{flex:0 0 140px;width:auto;font-size:13px;font-weight:600;color:var(--accent)}
+.lrow select.v-f{flex:0 1 200px;width:auto;min-width:150px}
+.urow .ubadge{flex:0 0 100px;font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.urow .ubadge.sw{color:var(--accent);font-weight:600}
+.urow .u-name{flex:1 1 150px;width:auto}
+.urow .u-ports{flex:0 0 76px;width:auto}
+.urow .u-lay,.urow .u-sp{flex:1 1 220px;width:auto}
+.p.bad{box-shadow:inset 0 0 0 2px #e5484d;background-image:linear-gradient(to top right,transparent calc(50% - 1.5px),#e5484d calc(50% - 1.5px),#e5484d calc(50% + 1.5px),transparent calc(50% + 1.5px))}
+.bad-k{background:var(--port);box-shadow:inset 0 0 0 2px #e5484d;background-image:linear-gradient(to top right,transparent calc(50% - 1px),#e5484d calc(50% - 1px),#e5484d calc(50% + 1px),transparent calc(50% + 1px))}
+.flow .n.badchip{background:#e5484d;color:#fff}
+.chk.badchk{padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);font-size:14px}
+.chk.badchk:has(input:checked){border-color:#e5484d;background:color-mix(in srgb,#e5484d 12%,var(--bg))}
+.chk.badchk input{accent-color:#e5484d;width:16px;height:16px}
+td .miss{color:#e5484d;font-weight:700}
+td .badmark{color:#e5484d;font-weight:700}
+.unit .lbl{position:relative;padding-right:18px;cursor:grab;user-select:none}
+.umenu{position:absolute;top:-4px;right:-6px;appearance:none;border:0;background:transparent;color:#aeb9c4;border-radius:4px;width:22px;height:22px;font-size:16px;line-height:1;cursor:pointer;display:grid;place-items:center}
+.umenu:hover,.umenu:focus-visible{background:rgba(255,255,255,.12);color:#fff;outline:none}
+.unit.udrag{opacity:.35}
+.uline{position:absolute;left:8px;right:8px;height:3px;border-radius:2px;background:var(--accent);box-shadow:0 0 0 2px rgba(91,155,239,.35);pointer-events:none;z-index:4}
+.devbar{display:flex;align-items:center;gap:10px;min-height:30px;font-family:var(--f-mono);font-size:12px;color:#aeb9c4}
+.devbar i{width:7px;height:7px;border-radius:50%;background:#3ccf7a;box-shadow:0 0 6px #3ccf7a}
+.devbar i.a{background:#e0b51b;box-shadow:0 0 6px #e0b51b}
+.um-pop{position:fixed;z-index:60;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.22);padding:4px;display:grid;min-width:180px}
+.um-pop button{appearance:none;border:0;background:transparent;text-align:left;padding:7px 10px;border-radius:5px;font:inherit;font-size:14px;color:var(--ink);cursor:pointer}
+.um-pop button:hover,.um-pop button:focus-visible{background:var(--accent-soft);outline:none}
+.um-pop button.dz{color:var(--danger)}
+.modal form,.modal{gap:12px}
+.modal label{color:var(--muted)}
+.cordsel select{width:auto;padding:4px 8px;font-size:13px}
+.prow{display:grid;grid-template-columns:minmax(0,1fr) 80px 100px auto;gap:6px;align-items:center}
+.prow-h{display:grid;grid-template-columns:minmax(0,1fr) 80px 100px auto;gap:6px;font-size:11px;color:var(--muted)}
+.hint{font-size:12px;color:var(--muted);margin:0}
+.x{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:6px;width:30px;height:30px;cursor:pointer;flex:none;font-size:16px;line-height:1}
+.x:hover{color:var(--danger);border-color:var(--danger)}
+.err{color:var(--danger)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1 id="title">Port Map</h1>
+      <p class="sub" data-t="tagline"></p>
+    </div>
+    <div class="bar">
+      <select id="lang" class="langsel"></select>
+      <select id="proj"></select>
+      <button class="b sm" id="btn-new" type="button" data-t="newBuilding"></button>
+      <button class="b sm" id="btn-set" type="button" data-t="settings"></button>
+      <button class="b sm" id="btn-undo" type="button" data-t="undo" title="Ctrl+Z" disabled></button>
+      <button class="b sm" id="btn-exp" type="button" data-t="export"></button>
+      <button class="b sm" id="btn-imp" type="button" data-t="import"></button>
+      <button class="b sm pri" id="btn-install" type="button" data-t="install" hidden></button>
+      <input type="file" id="imp" accept=".json,application/json" hidden>
+      <div class="status" id="status"></div>
+    </div>
+  </header>
+
+  <div id="v-map" class="wrap">
+    <details class="legwrap" id="legwrap" open><summary data-t="legendTitle"></summary><div class="legend" id="legend"></div></details>
+    <div class="main">
+      <div class="racks" id="racks"></div>
+      <aside class="side" id="side" aria-live="polite"></aside>
+    </div>
+    <section class="tablebox">
+      <div class="tools">
+        <h3 style="margin-right:auto" data-t="tableTitle"></h3>
+        <input id="q" type="search" data-ph="search">
+        <select id="fsw"></select>
+        <label class="chk"><input type="checkbox" id="flater"> <span id="flater-t"></span></label>
+        <label class="chk"><input type="checkbox" id="fbad"> <span id="fbad-t"></span></label>
+        <label class="chk"><input type="checkbox" id="fmiss"> <span id="fmiss-t"></span></label>
+      </div>
+      <div class="tw"><table>
+        <thead><tr><th data-t="thSwitch"></th><th data-t="thPort"></th><th data-t="thConn"></th><th data-t="thPanel"></th><th data-t="thFloor"></th><th data-t="thRoom"></th><th data-t="thDevice"></th><th data-t="thName"></th><th data-t="thVlan"></th><th data-t="thNote"></th></tr></thead>
+        <tbody id="tb"></tbody>
+      </table></div>
+      <p class="empty" id="tbempty"></p>
+    </section>
+    <section class="tablebox">
+      <h3 data-t="roomsTitle"></h3>
+      <p class="empty" data-t="roomsHint"></p>
+      <div id="roomlist"></div>
+      <div class="msg" id="rmsg"></div>
+    </section>
+  </div>
+
+  <div id="v-set" class="wrap" hidden></div>
+</div>
+
+<script src="i18n.js"></script>
+<script>
+"use strict";
+const KEY="portmap-store-v2";
+const NATIVE=window.portmapStore||null;
+const PALETTE=["#2f7de1","#14a37f","#d9822b","#8a5cd6","#c9475d","#4d5bd1","#0e8fa8","#c2569f","#8a6d3b","#b3262f","#5e8f2e","#8e9bd4","#2a9d8f","#e76f51","#6d597a","#7c8a99"];
+const BCONN=[{k:"up",peer:true},{k:"sfp",peer:true},{k:"pp"},{k:"pc"}];
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const uid=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const clone=o=>JSON.parse(JSON.stringify(o));
+const same=(a,b)=>String(a).trim().toLowerCase()===String(b).trim().toLowerCase();
+let LANG="en",store,P,sel=null,editing=null,confirmDel=null;
+function t(k,v){let s=(I18N[LANG]&&I18N[LANG][k])??I18N.en[k]??k;if(v)for(const x in v)s=s.split("{"+x+"}").join(v[x]);return s}
+
+/* ---------- storage ---------- */
+function newProject(name){return {id:uid("b"),name,racks:[],switches:[],floors:[],rooms:[],types:[],vlans:[],conns:[],hiddenConns:[],ports:{}}}
+function copyStructure(src,name){const p=newProject(name);for(const k of ["racks","switches","floors","rooms","types","vlans","conns","hiddenConns"])p[k]=clone(src[k]||[]);return p}
+function loadStore(){
+  let s=null;try{const raw=NATIVE?NATIVE.load():localStorage.getItem(KEY);s=raw?JSON.parse(raw):null}catch(_){s=null}
+  if(!s||!s.projects||!Object.keys(s.projects).length){s={v:2,projects:{},current:null};const p=newProject("");s.projects[p.id]=p;s.current=p.id}
+  if(!s.projects[s.current])s.current=Object.keys(s.projects)[0];
+  return s;
+}
+function pickLang(){const ok=l=>l&&I18N[l]?l:null;if(store.langUser&&ok(store.lang))return store.lang;
+  let inst=null;try{inst=NATIVE&&NATIVE.lang?NATIVE.lang():null}catch(_){}
+  return ok(inst)||ok((navigator.language||"en").slice(0,2))||"en"}
+/* ---------- undo / redo (Ctrl+Z / Ctrl+Y) ---------- */
+let undoStack=[],redoStack=[],lastSnap=null;
+const snap=()=>JSON.stringify({projects:store.projects,current:store.current});
+function track(){const now=snap();if(lastSnap!==null&&now!==lastSnap){undoStack.push(lastSnap);if(undoStack.length>100)undoStack.shift();redoStack=[]}lastSnap=now;updUndo()}
+function updUndo(){const b=$("#btn-undo");if(b)b.disabled=!undoStack.length}
+function restoreSnap(str){const o=JSON.parse(str);store.projects=o.projects;store.current=o.current;P=store.projects[store.current]||Object.values(store.projects)[0];store.current=P.id;
+  lastSnap=str;sel=null;editing=confirmDel=null;rackEdit=addUnit=null;closePop?.();closeUmenu?.();
+  try{const j=JSON.stringify(store);NATIVE?NATIVE.save(j):localStorage.setItem(KEY,j)}catch(_){}
+  showMap();renderBar();renderAll();updUndo()}
+function undo(){if(!undoStack.length){setStatus(t("nothingUndo"));return}redoStack.push(lastSnap);restoreSnap(undoStack.pop());setStatus(t("undone"))}
+function redo(){if(!redoStack.length){setStatus(t("nothingRedo"));return}undoStack.push(lastSnap);restoreSnap(redoStack.pop());setStatus(t("redone"))}
+document.addEventListener("keydown",e=>{
+  if(!(e.ctrlKey||e.metaKey)||e.altKey)return;const k=e.key.toLowerCase();if(k!=="z"&&k!=="y")return;
+  // inside a text field the field's own undo is used
+  const a=document.activeElement;if(a&&(a.tagName==="TEXTAREA"||(a.tagName==="INPUT"&&!["checkbox","radio","color","file","button","submit"].includes(a.type))))return;
+  if(document.querySelector(".modal-bg"))return;
+  e.preventDefault();if(k==="y"||(k==="z"&&e.shiftKey))redo();else undo()});
+function persist(){
+  track();
+  try{const j=JSON.stringify(store);const ok=NATIVE?NATIVE.save(j):(localStorage.setItem(KEY,j),true);if(ok!==true)throw ok;
+    setStatus(t("saved",{time:new Date().toLocaleTimeString(LANG,{hour:"2-digit",minute:"2-digit"})}))}
+  catch(e){setStatus(t("saveFail"))}
+}
+const setStatus=x=>{$("#status").textContent=x};
+
+/* ---------- lookups ---------- */
+const SW=id=>P.switches.find(s=>s.id===id);
+const swName=id=>SW(id)?.name||id;
+const conns=()=>[...BCONN.filter(c=>!P.hiddenConns.includes(c.k)),...P.conns];
+const connAny=k=>BCONN.find(c=>c.k===k)||P.conns.find(c=>c.k===k);
+const connObj=k=>connAny(k);
+const connName=k=>{const c=connObj(k);return c?(c.n||t("conn_"+c.k)):""};
+const isPeer=k=>!!connObj(k)?.peer;
+const floorObj=k=>P.floors.find(f=>f.k===k);
+const floorName=k=>k==="__later"?t("laterText"):(floorObj(k)?.n||"");
+const typeObj=k=>P.types.find(x=>x.k===k);
+const vlanObj=k=>P.vlans.find(x=>x.k===k);
+const vlanList=()=>P.vlans.map(v=>v.vid).join(", ");
+const vlanText=k=>k==="all"?t("vlanAllShort"):k==="none"?t("vlanNone"):(vlanObj(k)?`${vlanObj(k).vid} · ${vlanObj(k).n}`:"");
+const roomText=r=>r==="__later"?t("laterText"):r;
+const fKey=f=>f&&f!=="__later"?f:"";
+const isLater=d=>d.panel==="LATER"||d.floor==="__later"||d.room==="__later";
+const hasContent=d=>!!(d&&(d.room||d.type||d.name||d.conn||d.floor||d.note||d.vlan||d.bad));
+const DKINDS=["switch","firewall","router","nvr","server","ups","pdu","modem","other"];
+const DPORTS={switch:24,firewall:8,router:4,nvr:4,server:2,ups:0,pdu:0,modem:4,other:0};
+const kindName=k=>t("dk_"+(k||"switch"));
+const portDevs=()=>P.switches.filter(s=>s.ports>0);
+/* racks: P.racks=[{id,name,units:[{t:"p",id,ports}|{t:"s",sw}]}], top to bottom */
+const rackOf=id=>P.racks.find(r=>r.units.some(u=>u.t==="s"&&u.sw===id));
+const swIdsIn=r=>r?r.units.filter(u=>u.t==="s").map(u=>u.sw):[];
+const rackSw=r=>swIdsIn(r).map(SW).filter(Boolean);
+const panelsOf=id=>(rackOf(id)?.units||[]).filter(u=>u.t==="p");
+function nearPanels(swId){const r=rackOf(swId);if(!r)return [];const i=r.units.findIndex(u=>u.t==="s"&&u.sw===swId);let a=null,b=null;
+  for(let j=i-1;j>=0;j--)if(r.units[j].t==="p"){a=r.units[j];break}
+  for(let j=i+1;j<r.units.length;j++)if(r.units[j].t==="p"){b=r.units[j];break}
+  return [a,b].filter(Boolean)}
+function defPanel(sw,p){let st=1;for(const x of nearPanels(sw.id)){if(p<st+x.ports)return {panel:x.id,pp:p-st+1};st+=x.ports}return {panel:"",pp:""}}
+function defSwPort(sw,panel,pp){let st=1;for(const x of nearPanels(sw.id)){if(x.id===panel)return st+pp-1;st+=x.ports}return null}
+function panelUser(rk,pid,pp,excl){const ids=swIdsIn(rk);for(const [k,d] of Object.entries(P.ports)){if(k===excl)continue;if(ids.includes(d.sw)&&d.panel===pid&&+d.pp===+pp)return {sw:d.sw,port:d.port}}return null}
+function rec(swId,p){const sw=SW(swId),r=P.ports[swId+"-"+p]||{};let d={panel:r.panel,pp:r.pp||""};
+  if(r.panel===undefined){d=defPanel(sw,p);if(d.panel&&panelUser(rackOf(swId),d.panel,d.pp))d={panel:"",pp:""}}
+  return {sw:swId,port:p,conn:r.conn||"",panel:d.panel||"",pp:d.panel?d.pp:"",floor:r.floor||"",room:r.room||"",type:r.type||"",name:r.name||"",vlan:r.vlan||"",note:r.note||"",peerSw:r.peerSw||"",peerPort:r.peerPort||"",bad:!!r.bad}}
+function panelOwner(rk,pid,pp){const u=panelUser(rk,pid,pp);if(u)return u;
+  for(const s of rackSw(rk)){const d=defSwPort(s,pid,pp);if(d&&d<=s.ports&&!P.ports[s.id+"-"+d])return {sw:s.id,port:d}}return null}
+const panelText=r=>r.panel==="DIR"?t("directText"):r.panel==="LATER"?t("laterText"):r.panel?`${r.panel} :${r.pp}`:"";
+const pn=r=>r.panel==="DIR"?t("flowDirect"):r.panel==="LATER"||!r.panel?t("flowPanelQ"):r.panel+" :"+r.pp;
+function portColor(r){const ty=typeObj(r.type);if(ty)return ty.c;if(isPeer(r.conn))return "var(--link)";return hasContent(P.ports[r.sw+"-"+r.port])?"var(--filled)":""}
+function useCount(field,k){return Object.values(P.ports).filter(d=>d[field]===k).length}
+function nextColor(){const used=P.types.map(x=>x.c);return PALETTE.find(c=>!used.includes(c))||PALETTE[P.types.length%PALETTE.length]}
+function selPeer(){if(!sel)return null;const r=P.ports[sel.sw+"-"+sel.port];return r&&isPeer(r.conn)&&r.peerSw?r.peerSw+"-"+r.peerPort:null}
+const isSel=(sw,p)=>sel&&p&&sel.sw===sw&&sel.port===+p;
+const gridVars=n=>`--cols:${Math.min(n,24)};--mcols:${Math.min(n,12)}`;
+
+/* ---------- rooms (per floor) ---------- */
+function allRooms(){const out=[...P.rooms];for(const d of Object.values(P.ports)){const f=fKey(d.floor);
+  if(d.room&&d.room!=="__later"&&!out.some(x=>x.f===f&&x.n===d.room))out.push({f,n:d.room})}
+  const fi=f=>{const i=P.floors.findIndex(x=>x.k===f);return i<0?999:i};
+  return out.sort((a,b)=>fi(a.f)-fi(b.f)||a.n.localeCompare(b.n,LANG))}
+const roomList=f=>{const k=fKey(f);return [...new Set(allRooms().filter(x=>!k||x.f===k||x.f==="").map(x=>x.n))].sort((a,b)=>a.localeCompare(b,LANG))};
+const roomCount=(f,n)=>Object.values(P.ports).filter(d=>fKey(d.floor)===f&&d.room===n).length;
+
+/* ---------- legend ---------- */
+function renderLegend(){
+  const used=P.types.filter(x=>useCount("type",x.k)>0);
+  $("#legend").innerHTML=(used.length?used.map(x=>`<span><i class="sw" style="background:${esc(x.c)}"></i>${esc(x.n)}</span>`).join(""):`<span>${esc(t("legendEmpty"))}</span>`)
+    +`<i class="sep"></i><span><i class="sw" style="background:var(--port)"></i>${t("legendFree")}</span><span><i class="sw" style="background:var(--filled)"></i>${t("legendFilled")}</span><span><i class="sw" style="background:var(--link)"></i>${t("legendLink")}</span><span><i class="dot"></i>${t("legendDirect")}</span><span><i class="sw later-k"></i>${t("legendLater")}</span><span><i class="sw bad-k"></i>${t("legendBad")}</span>`
+    +`<i class="sep"></i><label class="chk cordsel">${t("cordsLbl")}<select id="cordmode">${opt("all",t("cordsAll"),store.cords||"all")}${opt("sel",t("cordsSel"),store.cords)}${opt("off",t("cordsOff"),store.cords)}</select></label>`;
+}
+$("#legend").addEventListener("change",e=>{if(e.target.id!=="cordmode")return;store.cords=e.target.value;persist();drawCords()});
+
+/* ---------- racks ---------- */
+let rackEdit=null,addUnit=null;
+function links(){const seen=new Set(),out=[];for(const k of Object.keys(P.ports)){const d=P.ports[k];if(!SW(d.sw))continue;const r=rec(d.sw,d.port);
+  if(!isPeer(r.conn)||!r.peerSw||!SW(r.peerSw))continue;const pk=r.peerSw+"-"+r.peerPort,id=[k,pk].sort().join("|");if(seen.has(id))continue;seen.add(id);out.push([r,rec(r.peerSw,+r.peerPort)])}return out}
+function linksHtml(){if(portDevs().length<2)return "";const L=links();
+  return `<div class="links"><div class="lt">${esc(t("linksTitle"))}</div>${L.length?L.map(([a,b])=>`<button class="lk" data-sw="${a.sw}" data-port="${a.port}"><span class="n">${esc(swName(a.sw))} :${a.port}</span><span>${esc(pn(a))}</span><i class="c"></i><span class="ct">${esc(connName(a.conn))}</span><i class="c"></i><span>${esc(pn(b))}</span><span class="n">${esc(swName(b.sw))} :${b.port}</span></button>`).join(""):`<p class="empty">${esc(t("noLinks"))}</p>`}</div>`}
+const umBtn=(rk,i)=>`<button class="umenu" type="button" data-umenu="${rk.id}" data-uidx="${i}" aria-label="${esc(t("umOptions"))}" title="${esc(t("umOptions"))}">⋯</button>`;
+function panelUnitHtml(rk,x,idx){let h="";for(let i=1;i<=x.ports;i++){const o=panelOwner(rk,x.id,i);const r=o?rec(o.sw,o.port):null;const c=r?portColor(r):"";
+    h+=`<button class="p${c?" on":""}${r&&r.bad&&hasContent(P.ports[o.sw+"-"+o.port])?" bad":""}${o&&isSel(o.sw,o.port)?" hl":""}" style="${c?"background:"+c:""}" data-rack="${rk.id}" data-sw="${o?o.sw:""}" data-port="${o?o.port:""}" data-panel="${esc(x.id)}" data-pp="${i}" title="${esc(x.id)} :${i}">${i}</button>`}
+  return `<div class="unit panel" data-panel="${esc(x.id)}" data-uidx="${idx}"><div class="lbl" title="${esc(t("dragUnit"))}">${esc(x.id)}<small>${t("kindPanel")}</small>${umBtn(rk,idx)}</div><div class="grid" style="${gridVars(x.ports)}">${h}</div></div>`}
+function switchUnitHtml(s,rk,idx){
+  const sub=(s.kind||"switch")==="switch"?t("nPorts",{n:s.ports}):s.ports?`${kindName(s.kind)} · ${t("nPorts",{n:s.ports})}`:kindName(s.kind);
+  const lbl=`<div class="lbl" title="${esc(s.name)} · ${esc(t("dragUnit"))}">${esc(s.name)}<small>${esc(sub)}</small>${umBtn(rk,idx)}</div>`;
+  if(!s.ports)return `<div class="unit switch dev" data-sw="${s.id}" data-uidx="${idx}">${lbl}<div class="devbar"><i></i><i class="a"></i><span>${esc(kindName(s.kind))}</span></div></div>`;
+  const spk=selPeer();const btn=p=>{const r=rec(s.id,p);const c=portColor(r);
+    return `<button class="p${c?" on":""}${r.panel==="DIR"?" dir":""}${isLater(r)?" later":""}${r.bad&&hasContent(P.ports[s.id+"-"+p])?" bad":""}${isSel(s.id,p)?" sel":""}${spk===s.id+"-"+p?" hl":""}" style="${c?"background:"+c:""}" data-sw="${s.id}" data-port="${p}" title="${esc(s.name)} :${p}">${p}</button>`};
+  // "oe": odd ports on the top row, even on the bottom, in blocks of 12 (like most switches). "seq": row by row.
+  let sp;if((s.layout||"oe")==="oe"){sp=`<div class="swports">`;for(let b=1;b<=s.ports;b+=12){const n=Math.min(12,s.ports-b+1),cols=Math.ceil(n/2);let h="";for(let p=b;p<b+n;p++)h+=btn(p);
+      sp+=`<div class="blk">${h}</div>`}sp+=`</div>`}
+  else{let h="";for(let p=1;p<=s.ports;p++)h+=btn(p);sp=`<div class="grid" style="${gridVars(s.ports)}">${h}</div>`}
+  return `<div class="unit switch" data-sw="${s.id}" data-uidx="${idx}">${lbl}${sp}</div>`}
+const unitLabel=u=>u.t==="p"?u.id:(SW(u.sw)?.name||"");
+function suggestPanelId(rk){const ids=rk.units.filter(u=>u.t==="p").map(u=>u.id.toLowerCase());if(!ids.includes("pp"))return "PP";if(!ids.includes("p2p"))return "P2P";let n=3;while(ids.includes("p"+n+"p"))n++;return "P"+n+"P"}
+function unitFormHtml(rk){return `<form class="unitform" data-rack="${rk.id}" novalidate>
+    <div class="uf-row"><label>${t("unitKind")}<select class="uf-kind">${opt("p",t("kindPanel"),"")}${DKINDS.map(k=>opt("d:"+k,kindName(k),"d:switch")).join("")}</select></label>
+    <label>${t("unitName")}<input class="uf-name" value="SW ${P.switches.length+1}"></label>
+    <label class="narrow">${t("swPortsLbl")}<input class="uf-ports" type="number" min="1" max="96" value="24"></label>
+    <label class="uf-lay">${t("numbering")}<select class="uf-layv">${opt("oe",t("layOE"),"oe")}${opt("seq",t("laySeq"),"")}</select></label>
+    <label>${t("position")}<select class="uf-pos">${opt("0",t("posFirst"),rk.units.length?"":"0")}${rk.units.map((u,i)=>opt(String(i+1),t("posBelow",{u:unitLabel(u)}),String(rk.units.length))).join("")}</select></label></div>
+    <div class="btns"><button class="b pri sm" type="submit">${t("add")}</button><button class="b sm" type="button" data-uf-cancel>${t("cancel")}</button></div><div class="msg uf-msg"></div></form>`}
+function rackHtml(rk){
+  const sws=rackSw(rk),used=sws.reduce((a,s)=>a+Object.keys(P.ports).filter(k=>k.startsWith(s.id+"-")&&hasContent(P.ports[k])).length,0),tot=sws.reduce((a,s)=>a+s.ports,0);
+  const units=rk.units.map((u,i)=>u.t==="p"?panelUnitHtml(rk,u,i):SW(u.sw)?switchUnitHtml(SW(u.sw),rk,i):"").join("")||`<p class="rk-empty">${esc(t("rackEmpty"))}</p>`;
+  const head=rackEdit===rk.id?`<form class="rk-ren" data-rack="${rk.id}"><input class="rk-name" value="${esc(rk.name)}" aria-label="${esc(t("rackName"))}"><button class="b sm pri" type="submit">${t("save")}</button><button class="b sm" type="button" data-rk-cancel>${t("cancel")}</button></form>`
+    :`<b>${esc(rk.name)}</b><button class="rk-btn" type="button" data-rk-ren="${rk.id}" title="${esc(t("rename"))}" aria-label="${esc(t("rename"))}">✎</button>`;
+  return `<div class="rack" data-rack="${rk.id}"><div class="rack-title"><div class="rt-l">${head}</div><div class="rt-r">${sws.length?`<small>${t("portsUsed",{n:used,t:tot})}</small>`:""}<button class="rk-btn" type="button" data-rk-add="${rk.id}" aria-expanded="${addUnit===rk.id}">${t("addUnit")}</button></div></div>
+    ${units}${addUnit===rk.id?unitFormHtml(rk):""}<svg class="cords" data-rack="${rk.id}" aria-hidden="true"></svg></div>`}
+function addRackHtml(){const first=!P.racks.length;return `<form class="card${first?" welcome":""}" id="addrack" novalidate>${first?`<h2>${esc(t("noRacks"))}</h2><p class="empty">${esc(t("noRacksHint"))}</p>`:""}
+    <div class="addsw"><label>${t("rackName")}<input id="ar-name" value="${esc(t("defaultRackName",{n:P.racks.length+1}))}"></label><button class="b${first?" pri":""}" type="submit">${t("addRack")}</button></div><div class="msg" id="ar-msg"></div></form>`}
+function renderRacks(){const R=P.racks.map(rackHtml);
+  $("#racks").innerHTML=(R.length===2?R[0]+linksHtml()+R[1]:R.join("")+linksHtml())+addRackHtml();drawCords()}
+// Thin patch cords from each patch panel port to its switch port, in the device colour.
+function drawCords(){
+  const mode=store.cords||"all";
+  document.querySelectorAll(".rack[data-rack]").forEach(el=>{
+    const svg=el.querySelector(".cords"),rk=P.racks.find(r=>r.id===el.dataset.rack);if(!svg||!rk)return;
+    if(mode==="off"){svg.innerHTML="";return}
+    const R=el.getBoundingClientRect();svg.setAttribute("width",R.width);svg.setAttribute("height",R.height);svg.setAttribute("viewBox",`0 0 ${R.width} ${R.height}`);
+    const selKey=sel?sel.sw+"-"+sel.port:null;let h="",any=false;
+    for(const s of rackSw(rk))for(let p=1;p<=s.ports;p++){const k=s.id+"-"+p;if(!hasContent(P.ports[k]))continue;if(mode==="sel"&&k!==selKey)continue;
+      const r=rec(s.id,p);if(!r.pp||!rk.units.some(u=>u.t==="p"&&u.id===r.panel))continue;
+      const a=el.querySelector(`.unit.panel[data-panel="${CSS.escape(r.panel)}"] .p[data-pp="${+r.pp}"]`),b=el.querySelector(`.unit.switch[data-sw="${CSS.escape(s.id)}"] .p[data-port="${p}"]`);if(!a||!b)continue;
+      const A=a.getBoundingClientRect(),B=b.getBoundingClientRect(),top=A.top<B.top;
+      const x1=A.left+A.width/2-R.left,y1=(top?A.bottom-2:A.top+2)-R.top,x2=B.left+B.width/2-R.left,y2=(top?B.top+3:B.bottom-3)-R.top,dy=(y2-y1)*.5;
+      if(k===selKey)any=true;
+      h+=`<path data-k="${k}"${k===selKey?' class="on"':""} style="stroke:${r.bad?"#e5484d":portColor(r)||"var(--filled)"}${r.bad?";stroke-dasharray:5 4":""}" d="M${x1.toFixed(1)} ${y1.toFixed(1)} C${x1.toFixed(1)} ${(y1+dy).toFixed(1)} ${x2.toFixed(1)} ${(y2-dy).toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}"/>`}
+    svg.innerHTML=h;svg.classList.toggle("dim",mode==="all"&&any);
+  });
+}
+$("#racks").addEventListener("mouseover",e=>{document.querySelectorAll(".cords path.hv").forEach(x=>x.classList.remove("hv"));
+  const b=e.target.closest(".p");if(!b||!b.dataset.port)return;const el=document.querySelector(`.cords path[data-k="${CSS.escape(b.dataset.sw+"-"+b.dataset.port)}"]`);if(el)el.classList.add("hv")});
+$("#racks").addEventListener("mouseleave",()=>document.querySelectorAll(".cords path.hv").forEach(x=>x.classList.remove("hv")));
+if(window.ResizeObserver)new ResizeObserver(()=>drawCords()).observe($("#racks"));
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>drawCords());
+$("#racks").addEventListener("submit",e=>{e.preventDefault();const f=e.target;
+  if(f.id==="addrack"){const name=$("#ar-name").value.trim();if(!name){$("#ar-msg").textContent=t("errRackName");return}
+    const rk={id:uid("r"),name,units:[]};P.racks.push(rk);addUnit=rk.id;persist();renderAll();$(`.unitform[data-rack="${rk.id}"] .uf-kind`)?.focus();return}
+  if(f.classList.contains("rk-ren")){const rk=P.racks.find(r=>r.id===f.dataset.rack),name=f.querySelector(".rk-name").value.trim();if(!name){f.querySelector(".rk-name").focus();return}
+    rk.name=name;rackEdit=null;persist();renderRacks();return}
+  if(f.classList.contains("unitform")){const rk=P.racks.find(r=>r.id===f.dataset.rack),msg=f.querySelector(".uf-msg");
+    const kind=f.querySelector(".uf-kind").value,name=f.querySelector(".uf-name").value.trim(),ports=+f.querySelector(".uf-ports").value,pos=+f.querySelector(".uf-pos").value;
+    const dk=kind.startsWith("d:")?kind.slice(2):null;
+    if(!(ports>=(dk&&dk!=="switch"?0:1)&&ports<=96)){msg.textContent=dk==="switch"&&ports===0?t("errSwZero"):t("errSwPorts",{n:name||"?"});return}
+    if(dk){if(!name){msg.textContent=t("errSwName");return}
+      const s={id:uid("s"),name,ports,layout:f.querySelector(".uf-layv").value,kind:dk};P.switches.push(s);rk.units.splice(pos,0,{t:"s",sw:s.id})}
+    else{if(!/^[A-Za-z0-9]{1,8}$/.test(name)||["DIR","LATER"].includes(name.toUpperCase())){msg.textContent=t("errPanelNew");return}
+      if(rk.units.some(u=>u.t==="p"&&same(u.id,name))){msg.textContent=t("errPanelExists",{p:name});return}
+      rk.units.splice(pos,0,{t:"p",id:name,ports})}
+    addUnit=null;persist();renderBar();renderAll()}
+});
+$("#racks").addEventListener("change",e=>{const k=e.target.closest(".uf-kind");if(!k)return;const f=k.closest(".unitform"),rk=P.racks.find(r=>r.id===f.dataset.rack);
+  const dk=k.value.startsWith("d:")?k.value.slice(2):null;f.querySelector(".uf-lay").hidden=!dk;
+  f.querySelector(".uf-name").value=!dk?suggestPanelId(rk):dk==="switch"?`SW ${P.switches.filter(x=>(x.kind||"switch")==="switch").length+1}`:`${kindName(dk)} ${P.switches.filter(x=>x.kind===dk).length+1}`;
+  f.querySelector(".uf-ports").value=dk?DPORTS[dk]:24;f.querySelector(".uf-ports").min=dk&&dk!=="switch"?0:1});
+$("#racks").addEventListener("keydown",e=>{if(e.key==="Escape"&&e.target.closest(".rk-ren")){rackEdit=null;renderRacks()}else if(e.key==="Escape"&&e.target.closest(".unitform")){addUnit=null;renderRacks()}});
+$("#racks").addEventListener("click",e=>{if(suppressClick)return;
+  const ren=e.target.closest("[data-rk-ren]");if(ren){rackEdit=ren.dataset.rkRen;renderRacks();const i=$(".rk-name");i.focus();i.select();return}
+  if(e.target.closest("[data-rk-cancel]")){rackEdit=null;renderRacks();return}
+  const ad=e.target.closest("[data-rk-add]");if(ad){addUnit=addUnit===ad.dataset.rkAdd?null:ad.dataset.rkAdd;renderRacks();$(`.unitform[data-rack="${addUnit}"] .uf-kind`)?.focus();return}
+  if(e.target.closest("[data-uf-cancel]")){addUnit=null;renderRacks();return}
+  const l=e.target.closest(".lk");if(l){select(l.dataset.sw,+l.dataset.port);return}
+  const b=e.target.closest(".p");if(!b)return;let p=+b.dataset.port;
+  if(!p){const rk=P.racks.find(r=>r.id===b.dataset.rack),panel=b.dataset.panel,pp=+b.dataset.pp,sws=rackSw(rk);if(!sws.length)return;
+    const s=sws.find(x=>nearPanels(x.id).some(u=>u.id===panel))||sws[0];
+    for(let i=1;i<=s.ports;i++)if(!P.ports[s.id+"-"+i]){p=i;break}
+    if(!p)return;select(s.id,p,{panel,pp});return}
+  select(b.dataset.sw,p)});
+/* ---------- move a unit inside its rack by dragging its name ---------- */
+let udrag=null;
+function udStart(){udrag.on=true;document.body.classList.add("dragging");udrag.u.classList.add("udrag");
+  udrag.line=document.createElement("div");udrag.line.className="uline";udrag.el.appendChild(udrag.line)}
+$("#racks").addEventListener("pointerdown",e=>{if(e.button!==0)return;const l=e.target.closest(".unit .lbl");if(!l||e.target.closest(".umenu"))return;
+  const u=l.closest(".unit"),el=u.closest(".rack");udrag={u,el,from:+u.dataset.uidx,x:e.clientX,y:e.clientY,on:false,to:null,touch:e.pointerType!=="mouse"};
+  if(udrag.touch)udrag.timer=setTimeout(()=>{if(udrag&&!udrag.on){udStart();navigator.vibrate?.(15)}},LONG);else e.preventDefault()});
+window.addEventListener("pointermove",e=>{if(!udrag)return;
+  if(!udrag.on){const d=Math.hypot(e.clientX-udrag.x,e.clientY-udrag.y);if(udrag.touch){if(d>8){clearTimeout(udrag.timer);udrag=null}return}if(d<6)return;udStart()}
+  const us=[...udrag.el.querySelectorAll(":scope > .unit")];let i=us.length;for(let j=0;j<us.length;j++){const R=us[j].getBoundingClientRect();if(e.clientY<R.top+R.height/2){i=j;break}}
+  udrag.to=i;const ref=i<us.length?us[i].offsetTop-4:us[us.length-1].offsetTop+us[us.length-1].offsetHeight+2;udrag.line.style.top=ref+"px"});
+window.addEventListener("pointerup",()=>{if(!udrag)return;const d=udrag;udrag=null;clearTimeout(d.timer);if(!d.on)return;
+  document.body.classList.remove("dragging");d.u.classList.remove("udrag");d.line?.remove();suppressClick=true;setTimeout(()=>{suppressClick=false},0);
+  const rk=P.racks.find(r=>r.id===d.el.dataset.rack);let to=d.to;if(to==null||!rk)return;if(to>d.from)to--;if(to===d.from)return;
+  const [m]=rk.units.splice(d.from,1);rk.units.splice(to,0,m);persist();renderAll()});
+window.addEventListener("keydown",e=>{if(e.key==="Escape"&&udrag){if(udrag.on){document.body.classList.remove("dragging");udrag.u.classList.remove("udrag");udrag.line?.remove()}udrag=null}});
+
+/* ---------- unit menu: rename, parameters, delete ---------- */
+let umenu=null;
+function closeUmenu(){if(umenu){umenu.el.remove();umenu=null}}
+$("#racks").addEventListener("click",e=>{const b=e.target.closest(".umenu");if(!b)return;e.stopPropagation();
+  if(umenu&&umenu.btn===b){closeUmenu();return}closeUmenu();
+  const rk=P.racks.find(r=>r.id===b.dataset.umenu),idx=+b.dataset.uidx;
+  const el=document.createElement("div");el.className="um-pop";el.setAttribute("role","menu");
+  el.innerHTML=`<button type="button" role="menuitem" data-a="ren">${esc(t("umRename"))}</button><button type="button" role="menuitem" data-a="par">${esc(t("umParams"))}</button><button type="button" role="menuitem" class="dz" data-a="del">${esc(t("umDelete"))}</button>`;
+  document.body.appendChild(el);const R=b.getBoundingClientRect();el.style.left=Math.min(R.left,innerWidth-el.offsetWidth-8)+"px";el.style.top=(R.bottom+4)+"px";
+  umenu={el,btn:b};el.querySelector("button").focus();
+  el.addEventListener("click",ev=>{const a=ev.target.closest("[data-a]")?.dataset.a;if(!a)return;closeUmenu();
+    if(a==="del")deleteUnit(rk,idx);else unitDialog(rk,idx,a==="ren")});
+},true);
+document.addEventListener("pointerdown",e=>{if(umenu&&!umenu.el.contains(e.target)&&!umenu.btn.contains(e.target))closeUmenu()});
+document.addEventListener("keydown",e=>{if(umenu&&e.key==="Escape"){const b=umenu.btn;closeUmenu();b.focus()}});
+document.addEventListener("scroll",closeUmenu,true);
+
+function modalForm(title,body,okLabel,onOk,focusSel){
+  const bg=document.createElement("div");bg.className="modal-bg";
+  bg.innerHTML=`<form class="modal" role="dialog" aria-modal="true" aria-labelledby="mf-t" novalidate><h3 id="mf-t">${esc(title)}</h3>${body}<div class="msg err" data-err></div><div class="btns"><button type="submit" class="b pri">${esc(okLabel)}</button><button type="button" class="b" data-no>${esc(t("cancel"))}</button></div></form>`;
+  document.body.appendChild(bg);const prev=document.activeElement,f=bg.firstElementChild;
+  const done=()=>{bg.remove();document.removeEventListener("keydown",key,true);if(prev&&prev.isConnected&&prev.focus)prev.focus()};
+  const key=e=>{if(e.key==="Escape"){e.preventDefault();e.stopPropagation();done()}};document.addEventListener("keydown",key,true);
+  bg.addEventListener("click",e=>{if(e.target===bg||e.target.closest("[data-no]"))done()});
+  f.addEventListener("submit",e=>{e.preventDefault();const err=onOk(f);if(err){f.querySelector("[data-err]").textContent=err;return}done()});
+  const fi=f.querySelector(focusSel||"input,select");if(fi){fi.focus();if(fi.select)fi.select()}
+}
+function listShort(a){return a.length>8?a.slice(0,8).join(", ")+" …":a.join(", ")}
+function unitDialog(rk,idx,renameOnly){
+  const u=rk.units[idx];if(!u)return;
+  if(u.t==="p"){
+    modalForm(t("paramsTitle",{n:u.id}),`<label>${t("unitName")}<input name="n" value="${esc(u.id)}"></label><label>${t("swPortsLbl")}<input name="c" type="number" min="1" max="96" value="${u.ports}"></label>`,t("save"),f=>{
+      const n=f.n.value.trim(),c=+f.c.value;
+      if(!/^[A-Za-z0-9]{1,8}$/.test(n)||["DIR","LATER"].includes(n.toUpperCase())||!(c>=1&&c<=96))return t("errPanelNew");
+      if(rk.units.some((x,i)=>i!==idx&&x.t==="p"&&same(x.id,n)))return t("errPanelExists",{p:n});
+      const ids=swIdsIn(rk),used=Object.values(P.ports).filter(d=>ids.includes(d.sw)&&d.panel===u.id&&+d.pp>c).map(d=>+d.pp).sort((a,b)=>a-b);
+      if(used.length)return t("errShrinkPanel",{n:c,list:listShort(used)});
+      if(n!==u.id)for(const k of Object.keys(P.ports)){const d=P.ports[k];if(ids.includes(d.sw)&&d.panel===u.id)P.ports[k]={...d,panel:n}}
+      u.id=n;u.ports=c;persist();renderAll();return null},renameOnly?"[name=n]":"[name=c]");return}
+  const s=SW(u.sw);if(!s)return;const kind=s.kind||"switch";
+  modalForm(t("paramsTitle",{n:s.name}),`<label>${t("unitName")}<input name="n" value="${esc(s.name)}"></label>
+    <label>${t("unitKind")}<select name="k">${DKINDS.map(k=>opt(k,kindName(k),kind)).join("")}</select></label>
+    <div class="row"><label>${t("swPortsLbl")}<input name="c" type="number" min="0" max="96" value="${s.ports}"></label>
+    <label>${t("numbering")}<select name="l">${opt("oe",t("layOE"),s.layout||"oe")}${opt("seq",t("laySeq"),s.layout)}</select></label></div>`,t("save"),f=>{
+      const n=f.n.value.trim(),k=f.k.value,c=+f.c.value;
+      if(!n)return t("errSwName");
+      if(!(c>=0&&c<=96))return t("errSwPorts",{n});if(k==="switch"&&c<1)return t("errSwZero");
+      const used=Object.values(P.ports).filter(d=>d.sw===s.id&&d.port>c&&hasContent(d)).map(d=>d.port).sort((a,b)=>a-b);
+      if(used.length)return t("errShrink",{n:c,list:listShort(used)});
+      for(const k2 of Object.keys(P.ports))if(P.ports[k2].sw===s.id&&P.ports[k2].port>c)delete P.ports[k2];
+      s.name=n;s.kind=k;s.ports=c;s.layout=f.l.value;if(sel&&sel.sw===s.id&&sel.port>c)sel=null;persist();renderBar();renderAll();return null},renameOnly?"[name=n]":"[name=c]");
+}
+async function deleteUnit(rk,idx){
+  const u=rk.units[idx];if(!u)return;
+  if(u.t==="p"){const ids=swIdsIn(rk),c=Object.values(P.ports).filter(d=>ids.includes(d.sw)&&d.panel===u.id).length;
+    if(!await confirmBox(t("delQ",{n:u.id}),c?t("delUsed",{c}):t("delUnused"),t("delOk")))return;
+    for(const k of Object.keys(P.ports)){const d=P.ports[k];if(ids.includes(d.sw)&&d.panel===u.id)P.ports[k]={...d,panel:"LATER",pp:""}}
+    rk.units.splice(idx,1);persist();renderAll();setStatus(t("deleted",{n:u.id}));return}
+  const s=SW(u.sw);const mine=Object.entries(P.ports).filter(([,d])=>d.sw===u.sw&&hasContent(d));
+  if(!await confirmBox(t("delQ",{n:s?s.name:"?"}),mine.length?t("delDevUsed",{c:mine.length}):t("delUnused"),t("delOk")))return;
+  for(const [k,d] of Object.entries(P.ports)){if(d.sw===u.sw){delete P.ports[k];continue}if(d.peerSw===u.sw)P.ports[k]={...d,peerSw:"",peerPort:""}}
+  rk.units.splice(idx,1);P.switches=P.switches.filter(x=>x.id!==u.sw);if(sel&&sel.sw===u.sw)sel=null;persist();renderBar();renderAll();setStatus(t("deleted",{n:s?s.name:""}));
+}
+
+/* ---------- drag a patch cord to another switch port ---------- */
+let drag=null,suppressClick=false;
+const LONG=420;
+$("#racks").addEventListener("pointerdown",e=>{
+  if(e.button!==0)return;const b=e.target.closest(".unit.switch .p");if(!b)return;
+  const sw=b.dataset.sw,port=+b.dataset.port;if(!hasContent(P.ports[sw+"-"+port]))return;
+  drag={b,sw,port,x:e.clientX,y:e.clientY,on:false,target:null,touch:e.pointerType!=="mouse"};
+  // touch: hold the port to pick up the cord, then slide
+  if(drag.touch)drag.timer=setTimeout(()=>{if(!drag||drag.on)return;dragStart();navigator.vibrate?.(15);moveGhost(drag.x,drag.y)},LONG)});
+function dragTarget(x,y){const el=document.elementFromPoint(x,y);const b=el&&el.closest&&el.closest(".unit.switch .p");return b&&b!==drag.b?b:null}
+function dragStart(){
+  drag.on=true;document.body.classList.add("dragging");drag.b.classList.add("dragsrc");
+  const r=rec(drag.sw,drag.port),rk=drag.b.closest(".rack"),pnl=panelsOf(drag.sw).find(x=>x.id===r.panel);
+  const anchor=pnl&&r.pp?rk.querySelector(`.unit.panel[data-panel="${CSS.escape(r.panel)}"] .p[data-pp="${+r.pp}"]`):null;
+  drag.anchor=anchor||drag.b;drag.top=!!anchor&&anchor.getBoundingClientRect().top<drag.b.getBoundingClientRect().top;drag.color=portColor(r)||"var(--filled)";
+  document.body.insertAdjacentHTML("beforeend",`<svg id="ghost"><path style="stroke:${drag.color}"/><circle r="5" style="fill:${drag.color}"/></svg><div id="draglbl"></div>`);
+}
+window.addEventListener("pointermove",e=>{
+  if(!drag)return;
+  if(!drag.on){const d=Math.hypot(e.clientX-drag.x,e.clientY-drag.y);if(drag.touch){if(d>8){clearTimeout(drag.timer);drag=null}return}if(d<6)return;dragStart()}
+  moveGhost(e.clientX,e.clientY)});
+function moveGhost(cx,cy){
+  const A=drag.anchor.getBoundingClientRect(),x1=A.left+A.width/2,y1=drag.anchor===drag.b?A.top+A.height/2:(drag.top?A.bottom:A.top),x2=cx,y2=cy,dy=(y2-y1)*.5;
+  $("#ghost path").setAttribute("d",`M${x1} ${y1} C${x1} ${y1+dy} ${x2} ${y2-dy} ${x2} ${y2}`);
+  $("#ghost circle").setAttribute("cx",x2);$("#ghost circle").setAttribute("cy",y2);
+  const tg=dragTarget(cx,cy);if(drag.target!==tg){if(drag.target)drag.target.classList.remove("drop");drag.target=tg;if(tg)tg.classList.add("drop")}
+  const lbl=$("#draglbl");
+  if(tg){const tk=tg.dataset.sw+"-"+tg.dataset.port;lbl.textContent=`→ ${swName(tg.dataset.sw)} :${tg.dataset.port}${hasContent(P.ports[tk])?" · "+t("dragSwap"):""}`;lbl.hidden=false;lbl.style.left=Math.min(cx+14,innerWidth-lbl.offsetWidth-6)+"px";lbl.style.top=(drag.touch?cy-44:cy+14)+"px"}
+  else lbl.hidden=true;
+}
+function dragEnd(apply){
+  if(!drag)return;const d=drag;drag=null;clearTimeout(d.timer);if(!d.on)return;
+  document.body.classList.remove("dragging");d.b.classList.remove("dragsrc");if(d.target)d.target.classList.remove("drop");
+  $("#ghost")?.remove();$("#draglbl")?.remove();
+  suppressClick=true;setTimeout(()=>{suppressClick=false},0);
+  if(apply&&d.target)dropMove(d.sw,d.port,d.target.dataset.sw,+d.target.dataset.port);
+}
+window.addEventListener("pointerup",()=>dragEnd(true));
+window.addEventListener("pointercancel",()=>{dragEnd(false);if(udrag){clearTimeout(udrag.timer);if(udrag.on){document.body.classList.remove("dragging");udrag.u.classList.remove("udrag");udrag.line?.remove()}udrag=null}});
+// while a cord or unit is being dragged by touch, the page must not scroll
+document.addEventListener("touchmove",e=>{if((drag&&drag.on)||(udrag&&udrag.on))e.preventDefault()},{passive:false});
+$("#racks").addEventListener("contextmenu",e=>{if(e.target.closest(".p,.lbl"))e.preventDefault()});
+window.addEventListener("keydown",e=>{if(e.key==="Escape")dragEnd(false)});
+function dropMove(fsw,fport,tsw,tport){
+  const key=fsw+"-"+fport,tkey=tsw+"-"+tport;if(key===tkey)return;
+  sel={sw:fsw,port:fport};renderSide();
+  const r=rec(fsw,fport),body={...r,sw:tsw,port:tport};
+  const needs=(rr,swId)=>rr.panel&&!["DIR","LATER"].includes(rr.panel)&&!panelsOf(swId).some(x=>x.id===rr.panel);
+  if(needs(r,tsw)){$("#msg").textContent=t("errNoPanel",{sw:rackOf(tsw)?.name||swName(tsw),p:r.panel});return}
+  if(hasContent(P.ports[tkey])){const o=rec(tsw,tport);if(needs(o,fsw)){$("#msg").textContent=t("errNoPanel",{sw:rackOf(fsw)?.name||swName(fsw),p:o.panel});return}
+    swapPorts(body,key,tkey,{});return}
+  save(body,{});
+}
+function select(sw,p,prefill){sel={sw,port:p,prefill};renderRacks();renderSide();
+  // phone in portrait: keep the chosen port visible above the bottom sheet
+  if(matchMedia("(max-width:900px) and (orientation:portrait)").matches){const b=document.querySelector(".p.sel")||document.querySelector(".p.hl");
+    if(b){const R=b.getBoundingClientRect(),sheet=$("#side").getBoundingClientRect().height,free=innerHeight-sheet;if(R.bottom>free-12||R.top<12)window.scrollBy({top:R.top-Math.max(16,free*0.35)})}}}
+
+/* ---------- port card ---------- */
+const opt=(v,label,cur,attrs="")=>`<option value="${esc(v)}"${v===cur?" selected":""}${attrs}>${esc(label)}</option>`;
+const dl=(kind,key)=>` data-del="${kind}:${esc(key)}"`;
+function roomOpts(f,cur,keep){const L=f==="__new"?[]:roomList(f);
+  return opt("",t("optNone"),cur)+L.map(x=>opt(x,x,cur,dl("room",x))).join("")
+    +(keep&&cur&&cur!=="__later"&&!L.includes(cur)?opt(cur,cur,cur):"")+opt("__later",t("optLater"),cur)+opt("__new",t("optNewRoom"),"")}
+function panelOpts(sw,cur){return opt("",t("optNone"),cur)+panelsOf(sw.id).map(x=>opt(x.id,x.id,cur,dl("panel",x.id))).join("")+opt("DIR",t("optDirect"),cur)+opt("LATER",t("optLater"),cur)+opt("__new",t("optNewPanel"),"")}
+function renderSide(){
+  const side=$("#side");
+  const open=!!(sel&&SW(sel.sw));side.classList.toggle("open",open);document.body.classList.toggle("cardopen",open);
+  if(!open){side.innerHTML=`<h2>${esc(t("noPort"))}</h2><p class="empty">${esc(t("noPortHint"))}</p>`;return}
+  const s=SW(sel.sw);const r=rec(sel.sw,sel.port);
+  if(sel.prefill&&!P.ports[sel.sw+"-"+sel.port]){r.panel=sel.prefill.panel;r.pp=sel.prefill.pp}
+  const other=portDevs().find(y=>y.id!==r.sw)||s;
+  const ty=typeObj(r.type);
+  side.innerHTML=`<button class="x sclose" type="button" id="sclose" aria-label="${esc(t("cancel"))}">×</button><h2>${esc(s.name)} · port ${r.port}</h2>
+   <div class="flow"><span class="n">${esc(s.name)} :${r.port}</span>${r.bad?`<span class="n badchip">${esc(t("badChip"))}</span>`:""}${r.conn?`<span class="a">→</span><span class="n">${esc(connName(r.conn))}</span>`:""}<span class="a">→</span><span class="n">${esc(pn(r))}</span><span class="a">→</span><span class="n">${esc([r.floor==="__later"?t("flowFloorQ"):floorName(r.floor),r.room==="__later"?t("flowRoomQ"):r.room].filter(Boolean).join(" · "))||t("flowRoomQ")}</span>${ty||!(isPeer(r.conn)&&r.peerSw)?`<span class="a">→</span><span class="n">${esc(ty?ty.n:"—")}</span>`:""}${isPeer(r.conn)&&r.peerSw?`<span class="a">⇄</span><span class="n">${esc(swName(r.peerSw))} :${r.peerPort}</span>`:""}</div>
+   <form id="f" novalidate>
+     <div class="row">
+       <label>${t("fSwitch")}<select id="f-sw">${portDevs().map(x=>opt(x.id,x.name,r.sw)).join("")}</select></label>
+       <label>${t("fPort")}<input id="f-port" type="number" min="1" max="${s.ports}" value="${r.port}"></label>
+     </div>
+     <label>${t("fConn")}<select id="f-conn">${opt("",t("optNone"),r.conn)}${conns().map(c=>opt(c.k,c.n||t("conn_"+c.k),r.conn,dl("conn",c.k))).join("")}${opt("__new",t("optNewConn"),"")}</select></label>
+     <div class="newbox" id="nb-conn" hidden><input id="f-conn-n" placeholder="${esc(t("phNewConn"))}"></div>
+     <label class="chk badchk"><input type="checkbox" id="f-bad"${r.bad?" checked":""}> ${t("fBad")}</label>
+     <div id="panelrow">
+       <div class="row">
+         <label>${t("fPanel")}<select id="f-panel">${panelOpts(s,r.panel)}</select></label>
+         <label>${t("fPanelPort")}<input id="f-pp" type="number" min="1" value="${esc(r.pp)}"${["DIR","LATER",""].includes(r.panel)?" disabled":""}></label>
+       </div>
+       <div class="newbox" id="nb-panel" hidden style="margin-top:8px"><input id="f-panel-n" placeholder="${esc(t("phPanelName"))}"><input id="f-panel-c" type="number" min="1" max="96" value="24" style="flex:0 0 72px" title="${esc(t("phPanelPorts"))}"><select id="f-panel-pos" style="flex:0 0 96px">${opt("top",t("posTop"),"top")}${opt("bottom",t("posBottom"),"")}</select></div>
+     </div>
+     <div class="row" id="peerrow"${isPeer(r.conn)?"":" hidden"}>
+       <label>${t("fPeerSw")}<select id="f-psw">${portDevs().map(x=>opt(x.id,x.name,r.peerSw||other.id)).join("")}</select></label>
+       <label>${t("fPeerPort")}<input id="f-pport" type="number" min="1" value="${esc(r.peerPort)}" placeholder="${esc(t("phPeerPort"))}"></label>
+     </div>
+     <label>${t("fFloor")}<select id="f-floor">${opt("",t("optNone"),r.floor)}${P.floors.map(f=>opt(f.k,f.n,r.floor,dl("floor",f.k))).join("")}${opt("__later",t("optLater"),r.floor)}${opt("__new",t("optNewFloor"),"")}</select></label>
+     <div class="newbox" id="nb-floor" hidden><input id="f-floor-n" placeholder="${esc(t("phNewFloor"))}"></div>
+     <label>${t("fRoom")}<select id="f-room">${roomOpts(r.floor,r.room,true)}</select></label>
+     <div class="newbox" id="nb-room" hidden><input id="f-room-n" placeholder="${esc(t("phNewRoom"))}"></div>
+     <label>${t("fType")}<select id="f-type">${opt("",t("optNone"),r.type)}${P.types.map(x=>opt(x.k,x.n,r.type,dl("type",x.k)+` data-c="${esc(x.c)}"`)).join("")}${opt("__new",t("optNewType"),"")}</select></label>
+     <div class="newbox" id="nb-type" hidden><input id="f-type-n" placeholder="${esc(t("phNewType"))}"><input id="f-type-c" type="color" value="${nextColor()}"></div>
+     <label>${t("fVlan")}<select id="f-vlan">${opt("",t("optNone"),r.vlan)}${P.vlans.map(v=>opt(v.k,`${v.vid} · ${v.n}`,r.vlan,dl("vlan",v.k))).join("")}${opt("all",t("vlanAll"),r.vlan)}${opt("none",t("vlanNone"),r.vlan)}${opt("__new",t("optNewVlan"),"")}</select></label>
+     <p class="hint" id="vlanhint"${r.vlan==="all"?"":" hidden"}>${esc(P.vlans.length?t("vlanAllHint",{list:vlanList()}):t("vlanAllNone"))}</p>
+     <div class="newbox" id="nb-vlan" hidden><input id="f-vlan-id" placeholder="${esc(t("phVlanId"))}" style="flex:0 0 80px"><input id="f-vlan-n" placeholder="${esc(t("phVlanName"))}"><input id="f-vlan-s" placeholder="${esc(t("phVlanSubnet"))}"></div>
+     <label>${t("fName")}<input id="f-name" value="${esc(r.name)}" placeholder="${esc(t("phDevName"))}"></label>
+     <label>${t("fNote")}<textarea id="f-note" rows="2">${esc(r.note)}</textarea></label>
+     <div class="btns"><button class="b pri" type="submit">${t("save")}</button><button class="b" type="button" id="clr">${t("clearPort")}</button><button class="b" type="button" id="cancel">${t("cancel")}</button></div>
+     <div class="msg" id="msg"></div>
+   </form>`;
+  const showNew=(sid,box)=>{const n=$(sid).value==="__new";$(box).hidden=!n;if(n)$(box).querySelector("input").focus()};
+  $("#f-conn").addEventListener("change",e=>{const v=e.target.value;showNew("#f-conn","#nb-conn");
+    $("#peerrow").hidden=!isPeer(v)});
+  $("#f-panel").addEventListener("change",e=>{showNew("#f-panel","#nb-panel");$("#f-pp").disabled=["DIR","LATER",""].includes(e.target.value);if(e.target.value==="__new")$("#f-pp").value=$("#f-pp").value||1});
+  $("#f-floor").addEventListener("change",e=>{showNew("#f-floor","#nb-floor");const cur=$("#f-room").value;$("#f-room").innerHTML=roomOpts(e.target.value,cur==="__new"?"":cur,false);$("#nb-room").hidden=true});
+  $("#f-room").addEventListener("change",()=>showNew("#f-room","#nb-room"));
+  $("#f-type").addEventListener("change",()=>showNew("#f-type","#nb-type"));
+  $("#f-vlan").addEventListener("change",()=>showNew("#f-vlan","#nb-vlan"));
+  $("#f-sw").addEventListener("change",e=>{const ns=SW(e.target.value);$("#f-port").max=ns.ports;const cur=$("#f-panel").value;$("#f-panel").innerHTML=panelOpts(ns,panelsOf(ns.id).some(x=>x.id===cur)||["DIR","LATER"].includes(cur)?cur:"")});
+  $("#clr").addEventListener("click",()=>save(null,{}));
+  const closeCard=()=>{sel=null;renderRacks();renderSide()};
+  $("#cancel").addEventListener("click",closeCard);$("#sclose").addEventListener("click",closeCard);
+  $("#f").addEventListener("keydown",e=>{if(e.key==="Escape"&&!pop&&!document.querySelector(".modal-bg")){e.preventDefault();closeCard()}});
+  $("#f-vlan").addEventListener("change",e=>{$("#vlanhint").hidden=e.target.value!=="all"});
+  $("#f").addEventListener("submit",e=>{e.preventDefault();submitCard()});
+  ["#f-conn","#f-panel","#f-floor","#f-room","#f-type","#f-vlan"].forEach(id=>enhance($(id)));
+  // Enter saves the card from any field (Ctrl+Enter inside the note).
+  $("#f").addEventListener("keydown",e=>{if(e.key!=="Enter"||pop||e.isComposing)return;if(e.target.tagName==="TEXTAREA"&&!(e.ctrlKey||e.metaKey))return;e.preventDefault();submitCard()});
+}
+/* ---------- dropdowns with a delete (⊖) button per option ---------- */
+const SPEC=["","__later","__new","LATER","DIR","none","all"];
+const optHtml=o=>`${o.dataset.c?`<i class="sw" style="background:${esc(o.dataset.c)}"></i>`:""}<span>${esc(o.textContent)}</span>`;
+let pop=null;
+function enhance(sel){
+  if(!sel||sel._pk)return;sel._pk=true;
+  const wrap=document.createElement("div");wrap.className="pk";
+  wrap.innerHTML=`<button type="button" class="pk-btn" aria-haspopup="listbox"><span class="pk-val"></span><span class="pk-car">▼</span></button>`;
+  sel.after(wrap);sel.hidden=true;const btn=wrap.firstElementChild;
+  const refresh=()=>{const o=sel.options[sel.selectedIndex];btn.querySelector(".pk-val").innerHTML=o?optHtml(o):""};
+  refresh();sel.addEventListener("change",refresh);new MutationObserver(refresh).observe(sel,{childList:true,subtree:true,attributes:true});
+  btn.addEventListener("click",()=>pop&&pop.btn===btn?closePop():openPop(sel,btn));
+  btn.addEventListener("keydown",e=>{if(!pop&&["ArrowDown","ArrowUp"].includes(e.key)){e.preventDefault();openPop(sel,btn)}});
+}
+function closePop(){if(!pop)return;pop.el.remove();pop.btn.classList.remove("open");pop.btn.setAttribute("aria-expanded","false");pop=null}
+function openPop(sel,btn){
+  closePop();
+  const el=document.createElement("div");el.className="pk-pop";el.setAttribute("role","listbox");
+  el.innerHTML=[...sel.options].map((o,i)=>`<div class="pk-it${SPEC.includes(o.value)&&!o.dataset.del?" spec":""}" role="option" data-i="${i}" aria-selected="${o.selected}"><span class="lb">${optHtml(o)}</span>${o.dataset.del?`<button type="button" class="pk-del" data-i="${i}" title="${esc(t("pkDel"))}" aria-label="${esc(t("pkDel"))}: ${esc(o.textContent)}">−</button>`:""}</div>`).join("");
+  document.body.appendChild(el);
+  const R=btn.getBoundingClientRect(),below=innerHeight-R.bottom-8,above=R.top-8,h=Math.min(el.scrollHeight,320);
+  el.style.left=R.left+"px";el.style.width=R.width+"px";
+  if(below>=Math.min(h,200)||below>=above){el.style.top=(R.bottom+4)+"px";el.style.maxHeight=Math.max(120,below-4)+"px"}
+  else{el.style.maxHeight=Math.max(120,above-4)+"px";el.style.top=(R.top-4-Math.min(h,above-4))+"px"}
+  btn.classList.add("open");btn.setAttribute("aria-expanded","true");
+  pop={el,btn,sel,act:Math.max(0,sel.selectedIndex)};markAct();
+  el.addEventListener("pointerdown",e=>e.preventDefault());
+  el.addEventListener("click",e=>{
+    const d=e.target.closest(".pk-del");if(d){e.stopPropagation();const o=sel.options[+d.dataset.i];closePop();askDelete(sel,o,btn);return}
+    const it=e.target.closest(".pk-it");if(it)choose(+it.dataset.i)});
+}
+function markAct(){if(!pop)return;pop.el.querySelectorAll(".pk-it").forEach((x,i)=>x.classList.toggle("act",i===pop.act));pop.el.children[pop.act]?.scrollIntoView({block:"nearest"})}
+function choose(i){const {sel,btn}=pop;closePop();if(sel.selectedIndex!==i){sel.selectedIndex=i;sel.dispatchEvent(new Event("change",{bubbles:true}))}btn.focus()}
+document.addEventListener("keydown",e=>{if(!pop)return;const n=pop.sel.options.length;if(["Escape","ArrowDown","ArrowUp","Enter","Delete"].includes(e.key))e.stopPropagation();
+  if(e.key==="Escape"){e.preventDefault();const b=pop.btn;closePop();b.focus()}
+  else if(e.key==="ArrowDown"){e.preventDefault();pop.act=(pop.act+1)%n;markAct()}
+  else if(e.key==="ArrowUp"){e.preventDefault();pop.act=(pop.act-1+n)%n;markAct()}
+  else if(e.key==="Enter"){e.preventDefault();choose(pop.act)}
+  else if((e.key==="Delete")&&pop.sel.options[pop.act]?.dataset.del){e.preventDefault();const {sel,btn}=pop,o=sel.options[pop.act];closePop();askDelete(sel,o,btn)}
+  else if(e.key==="Tab")closePop()},true);
+document.addEventListener("pointerdown",e=>{if(pop&&!pop.el.contains(e.target)&&!pop.btn.contains(e.target))closePop()});
+window.addEventListener("resize",closePop);
+document.addEventListener("scroll",e=>{if(pop&&!pop.el.contains(e.target))closePop()},true);
+
+function confirmBox(title,text,okLabel){return new Promise(res=>{
+  const bg=document.createElement("div");bg.className="modal-bg";
+  bg.innerHTML=`<div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="mdl-t"><h3 id="mdl-t">${esc(title)}</h3><p>${esc(text)}</p><div class="btns"><button type="button" class="b danger-fill" data-ok>${esc(okLabel)}</button><button type="button" class="b" data-no>${esc(t("cancel"))}</button></div></div>`;
+  document.body.appendChild(bg);const prev=document.activeElement;
+  const done=v=>{bg.remove();document.removeEventListener("keydown",key,true);res(v);if(prev&&prev.focus)prev.focus()};
+  const key=e=>{if(e.key==="Escape"){e.preventDefault();e.stopPropagation();done(false)}};
+  document.addEventListener("keydown",key,true);
+  bg.addEventListener("click",e=>{if(e.target===bg||e.target.closest("[data-no]"))done(false);else if(e.target.closest("[data-ok]"))done(true)});
+  bg.querySelector("[data-no]").focus();
+})}
+function delMatch(kind,key,ctx){const f=fKey(ctx.floor);return d=>
+  kind==="conn"?d.conn===key:kind==="floor"?d.floor===key:kind==="type"?d.type===key:kind==="vlan"?d.vlan===key:
+  kind==="panel"?swIdsIn(rackOf(ctx.sw)).includes(d.sw)&&d.panel===key:kind==="room"?d.room===key&&(!f||fKey(d.floor)===f):false}
+function deleteItem(kind,key,ctx){
+  const m=delMatch(kind,key,ctx);
+  for(const [k,d] of Object.entries(P.ports)){if(!m(d))continue;
+    if(kind==="conn"){if(d.peerSw){const pk=d.peerSw+"-"+d.peerPort,o=P.ports[pk];if(o&&o.peerSw+"-"+o.peerPort===k)P.ports[pk]={...o,peerSw:"",peerPort:""}}
+      P.ports[k]={...d,conn:"",peerSw:"",peerPort:""}}
+    else if(kind==="panel")P.ports[k]={...d,panel:"LATER",pp:""};
+    else P.ports[k]={...d,[kind]:""}}
+  if(kind==="conn"){if(BCONN.some(c=>c.k===key)){if(!P.hiddenConns.includes(key))P.hiddenConns.push(key)}else P.conns=P.conns.filter(c=>c.k!==key)}
+  else if(kind==="floor"){P.floors=P.floors.filter(x=>x.k!==key);const out=[];for(const x of P.rooms){const n={f:x.f===key?"":x.f,n:x.n};if(!out.some(y=>y.f===n.f&&y.n===n.n))out.push(n)}P.rooms=out}
+  else if(kind==="type")P.types=P.types.filter(x=>x.k!==key);
+  else if(kind==="vlan")P.vlans=P.vlans.filter(x=>x.k!==key);
+  else if(kind==="panel"){const rk=rackOf(ctx.sw);if(rk)rk.units=rk.units.filter(u=>!(u.t==="p"&&u.id===key))}
+  else if(kind==="room"){const f=fKey(ctx.floor);P.rooms=P.rooms.filter(x=>!(x.n===key&&(!f||x.f===f)))}
+}
+async function askDelete(sel,o,btn){
+  const i=o.dataset.del.indexOf(":"),kind=o.dataset.del.slice(0,i),key=o.dataset.del.slice(i+1),name=o.textContent;
+  const ctx={floor:$("#f-floor")?.value||"",sw:$("#f-sw")?.value||""};
+  const c=Object.values(P.ports).filter(delMatch(kind,key,ctx)).length;
+  const ok=await confirmBox(t("delQ",{n:name}),c?t("delUsed",{c}):t("delUnused"),t("delOk"));
+  if(!ok){btn.focus();return}
+  deleteItem(kind,key,ctx);persist();
+  const was=o.selected;o.remove();if(was){sel.value="";sel.dispatchEvent(new Event("change",{bubbles:true}))}
+  renderLegend();renderRacks();renderTable();renderRooms();renderBar();
+  const m=$("#msg");if(m)m.textContent=t("deleted",{n:name});btn.focus();
+}
+function submitCard(){
+  const msg=$("#msg"),v=id=>$(id).value.trim(),fail=(k,focus)=>{msg.textContent=t(k);if(focus)$(focus).focus();return null};
+  const pend={};const tsw=SW($("#f-sw").value);
+  let conn=$("#f-conn").value;
+  if(conn==="__new"){const n=v("#f-conn-n");if(!n)return fail("needNewConn","#f-conn-n");
+    const ex=P.conns.find(c=>same(c.n,n));if(ex)conn=ex.k;else{pend.conn={k:uid("c"),n,peer:false};conn=pend.conn.k}}
+  let panel=$("#f-panel").value,pp=+$("#f-pp").value||"";
+  if(panel==="__new"){const n=v("#f-panel-n"),c=+$("#f-panel-c").value;
+    if(!/^[A-Za-z0-9]{1,8}$/.test(n)||["DIR","LATER"].includes(n.toUpperCase())||!(c>=1&&c<=96))return fail("errPanelNew","#f-panel-n");
+    if(panelsOf(tsw.id).some(x=>same(x.id,n))){msg.textContent=t("errPanelExists",{p:n});return null}
+    pend.panel={sw:tsw.id,id:n,ports:c,pos:$("#f-panel-pos").value};panel=n;pp=pp||1}
+  if(["DIR","LATER",""].includes(panel))pp="";
+  let floor=$("#f-floor").value;
+  if(floor==="__new"){const n=v("#f-floor-n");if(!n)return fail("needNewFloor","#f-floor-n");
+    const ex=P.floors.find(f=>same(f.n,n));if(ex)floor=ex.k;else{pend.floor={k:uid("f"),n};floor=pend.floor.k}}
+  let room=$("#f-room").value;
+  if(room==="__new"){room=v("#f-room-n");if(!room)return fail("needNewRoom","#f-room-n")}
+  let type=$("#f-type").value;
+  if(type==="__new"){const n=v("#f-type-n");if(!n)return fail("needNewType","#f-type-n");
+    const ex=P.types.find(x=>same(x.n,n));if(ex)type=ex.k;else{pend.type={k:uid("t"),n,c:$("#f-type-c").value};type=pend.type.k}}
+  let vlan=$("#f-vlan").value;if(!vlan&&isPeer(conn))vlan="all";
+  if(vlan==="__new"){const id=v("#f-vlan-id"),n=v("#f-vlan-n");if(!id||!n)return fail("errVlanNew","#f-vlan-id");
+    const ex=P.vlans.find(x=>same(x.vid,id));if(ex)vlan=ex.k;else{pend.vlan={k:uid("v"),vid:id,n,sn:v("#f-vlan-s")};vlan=pend.vlan.k}}
+  const peer=isPeer(conn)&&+$("#f-pport").value;
+  save({sw:tsw.id,port:Math.min(tsw.ports,Math.max(1,+$("#f-port").value||1)),conn,panel,pp,floor,room,type,vlan,
+    name:v("#f-name"),note:$("#f-note").value.trim(),bad:$("#f-bad").checked,peerSw:peer?$("#f-psw").value:"",peerPort:peer?+$("#f-pport").value:""},pend);
+}
+function applyPend(pend){
+  if(pend.conn)P.conns.push(pend.conn);if(pend.floor)P.floors.push(pend.floor);if(pend.type)P.types.push(pend.type);if(pend.vlan)P.vlans.push(pend.vlan);
+  if(pend.panel){const {sw,pos,id,ports}=pend.panel,rk=rackOf(sw),i=rk.units.findIndex(u=>u.t==="s"&&u.sw===sw);rk.units.splice(pos==="top"?i:i+1,0,{t:"p",id,ports})}
+}
+function addRoom(body){if(body&&body.room&&body.room!=="__later"){const f=fKey(body.floor);if(!P.rooms.some(x=>x.f===f&&x.n===body.room))P.rooms.push({f,n:body.room})}}
+function whatText(d){return [roomText(d.room),typeObj(d.type)?.n,connName(d.conn)].filter(Boolean).join(" · ")}
+function swapPorts(body,key,tkey,pend){
+  applyPend(pend);
+  const {sw:tsw,port:tport,...rest}=body;
+  const a={sw:tsw,port:tport,...rest},o={...P.ports[tkey],sw:sel.sw,port:sel.port};
+  P.ports[tkey]=a;P.ports[key]=o;addRoom(a);
+  for(const r of [a,o])if(isPeer(r.conn)&&r.peerSw){const pk=r.peerSw+"-"+r.peerPort;if(P.ports[pk])P.ports[pk]={...P.ports[pk],peerSw:r.sw,peerPort:r.port}}
+  sel=null;persist();renderAll();setStatus(t("swapped",{a:`${swName(o.sw)} :${o.port}`,b:`${swName(a.sw)} :${a.port}`}));
+}
+function save(body,pend){
+  const key=sel.sw+"-"+sel.port,msg=$("#msg");
+  const tsw=body?body.sw:sel.sw,tport=body?body.port:sel.port,tkey=tsw+"-"+tport,moved=tkey!==key,old=P.ports[key];
+  if(body&&!["DIR","LATER",""].includes(body.panel)){const sw=SW(tsw),rk=rackOf(tsw);
+    const pnl=panelsOf(tsw).find(x=>x.id===body.panel)||(pend.panel&&pend.panel.sw===tsw&&pend.panel.id===body.panel?pend.panel:null);
+    if(!pnl){msg.textContent=t("errNoPanel",{sw:rk?.name||sw.name,p:body.panel});return}
+    if(!(body.pp>=1)){body.pp=1}
+    if(body.pp>pnl.ports){msg.textContent=t("errPanelPorts",{p:body.panel,n:pnl.ports});return}
+    const o=panelUser(rk,body.panel,body.pp,key);
+    if(o&&!(o.sw===tsw&&o.port===tport)){msg.textContent=t("errPanelTaken",{p:`${body.panel} :${body.pp}`,o:`${swName(o.sw)} :${o.port}`});return}}
+  if(body&&moved){const tg=P.ports[tkey];if(hasContent(tg)){
+    msg.innerHTML=`${esc(t("errBusy",{sw:swName(tsw),p:tport,what:whatText(tg)}))} <button class="b sm" type="button" id="swapbtn">${esc(t("swapBtn"))}</button>`;
+    $("#swapbtn").addEventListener("click",()=>swapPorts(body,key,tkey,pend));return}}
+  const oldPk=old&&isPeer(old.conn)&&old.peerSw?old.peerSw+"-"+old.peerPort:null;
+  const newPk=body&&isPeer(body.conn)&&body.peerSw?body.peerSw+"-"+body.peerPort:null;
+  if(newPk){const ps=SW(body.peerSw);if(body.peerPort>ps.ports){msg.textContent=t("errPeerPorts",{sw:ps.name,n:ps.ports});return}
+    if(newPk===tkey){msg.textContent=t("errSelf");return}
+    const pr=P.ports[newPk];if(pr&&hasContent(pr)&&!isPeer(pr.conn)&&newPk!==key){msg.textContent=t("errPeerBusy",{sw:ps.name,p:body.peerPort,what:whatText(pr)});return}}
+  applyPend(pend);
+  if(body){P.ports[tkey]={...body,sw:tsw,port:tport};if(moved)delete P.ports[key];sel={sw:tsw,port:tport}}else delete P.ports[key];
+  if(oldPk&&oldPk!==newPk&&P.ports[oldPk]&&P.ports[oldPk].peerSw+"-"+P.ports[oldPk].peerPort===key)P.ports[oldPk]={...P.ports[oldPk],peerSw:"",peerPort:""};
+  if(newPk){const pr=P.ports[newPk],pp=+body.peerPort;
+    P.ports[newPk]=pr?{...pr,conn:pr.conn&&isPeer(pr.conn)?pr.conn:body.conn,vlan:pr.vlan||"all",peerSw:tsw,peerPort:tport}
+      :{sw:body.peerSw,port:pp,conn:body.conn,panel:"LATER",pp:"",floor:"",room:"",type:"",name:"",vlan:"all",note:"",peerSw:tsw,peerPort:tport}}
+  addRoom(body);
+  // close the port card after saving
+  sel=null;persist();renderAll();setStatus(t(body?"mSaved":"mCleared")+" · "+new Date().toLocaleTimeString(LANG,{hour:"2-digit",minute:"2-digit"}));
+}
+
+/* ---------- table ---------- */
+// fields still left at "— not selected —" on a port that is in use
+function missing(r){const m=[],peer=isPeer(r.conn)&&r.peerSw;if(!r.conn)m.push("conn");if(!r.panel)m.push("panel");if(!r.floor)m.push("floor");if(!r.room)m.push("room");if(!r.type&&!peer)m.push("type");if(!r.vlan)m.push("vlan");return m}
+const MISS=`<span class="miss" title="">—</span>`;
+function renderTable(){
+  const q=$("#q").value.toLowerCase().trim(),fs=$("#fsw").value,onlyLater=$("#flater").checked,onlyBad=$("#fbad").checked,onlyMiss=$("#fmiss").checked;
+  $("#fmiss-t").textContent=t("missFilter",{n:Object.values(P.ports).filter(d=>SW(d.sw)&&hasContent(d)&&missing(rec(d.sw,d.port)).length).length});
+  $("#fbad-t").textContent=t("badFilter",{n:Object.values(P.ports).filter(d=>d.bad&&SW(d.sw)).length});
+  $("#flater-t").textContent=t("laterFilter",{n:Object.values(P.ports).filter(isLater).length});
+  const rows=Object.values(P.ports).filter(d=>SW(d.sw)&&hasContent(d)&&(!fs||d.sw===fs)&&(!onlyLater||isLater(d))&&(!onlyBad||d.bad)).map(d=>rec(d.sw,d.port)).filter(r=>!onlyMiss||missing(r).length)
+    .filter(r=>!q||[floorName(r.floor),roomText(r.room),r.name,r.vlan==="all"?"ALL "+P.vlans.map(v=>v.vid+" "+v.n).join(" "):vlanText(r.vlan),r.note,typeObj(r.type)?.n,connName(r.conn),isPeer(r.conn)&&r.peerSw?swName(r.peerSw):""].join(" ").toLowerCase().includes(q))
+    .sort((a,b)=>P.switches.indexOf(SW(a.sw))-P.switches.indexOf(SW(b.sw))||a.port-b.port);
+  $("#tbempty").hidden=rows.length>0;
+  $("#tbempty").textContent=Object.keys(P.ports).length?t("tNoMatch"):t("tEmpty");
+  const M=(v,html)=>v?html:MISS.replace('title=""',`title="${esc(t("optNone"))}"`);
+  $("#tb").innerHTML=rows.map(r=>{const ty=typeObj(r.type);return `<tr class="click" data-sw="${r.sw}" data-port="${r.port}"><td>${r.bad?`<span class="badmark" title="${esc(t("fBad"))}">⚠ </span>`:""}${esc(swName(r.sw))}</td><td class="mono">${r.port}</td><td>${M(r.conn,esc(connName(r.conn))+(isPeer(r.conn)&&r.peerSw?" → "+esc(swName(r.peerSw))+" :"+r.peerPort:""))}</td><td class="mono">${M(r.panel,esc(panelText(r)))}</td><td>${M(r.floor,esc(floorName(r.floor)))}</td><td>${M(r.room,esc(roomText(r.room)))}</td><td>${!ty&&isPeer(r.conn)&&r.peerSw?`<span class="tag"><i class="sw" style="background:var(--link)"></i>⇄ ${esc(swName(r.peerSw))}</span>`:M(ty,ty?`<span class="tag"><i class="sw" style="background:${esc(ty.c)}"></i>${esc(ty.n)}</span>`:"")}</td><td class="mono">${esc(r.name)}</td><td class="mono">${r.vlan==="all"?`<span title="${esc(t("vlanAllHint",{list:vlanList()}))}">${esc(t("vlanAllShort"))}</span>`:M(r.vlan,esc(vlanText(r.vlan)))}</td><td>${esc(r.note)}</td></tr>`}).join("");
+}
+$("#tb").addEventListener("click",e=>{const tr=e.target.closest("tr");if(tr){select(tr.dataset.sw,+tr.dataset.port);if(!matchMedia("(max-width:900px)").matches)window.scrollTo({top:0})}});
+$("#q").addEventListener("input",renderTable);$("#fsw").addEventListener("change",renderTable);$("#flater").addEventListener("change",renderTable);$("#fbad").addEventListener("change",renderTable);$("#fmiss").addEventListener("change",renderTable);
+
+/* ---------- rooms ---------- */
+function renderRooms(){
+  const list=allRooms();
+  if(!list.length){$("#roomlist").innerHTML=`<p class="empty">${esc(t("noRooms"))}</p>`;return}
+  const groups=[...new Set(list.map(x=>x.f))];
+  $("#roomlist").innerHTML=groups.map(g=>`<h4 class="rg">${esc(floorName(g)||t("noFloor"))}</h4>`+list.filter(x=>x.f===g).map(x=>{
+    const id=g+"\u0001"+x.n,e=esc(x.n),fa=esc(g),c=roomCount(g,x.n);
+    if(editing===id)return `<div class="ri"><input id="rn-new" value="${e}" style="flex:1 1 180px;width:auto"><button class="b sm pri" data-act="ren-ok" data-f="${fa}" data-r="${e}">${t("save")}</button><button class="b sm" data-act="cancel">${t("cancel")}</button></div>`;
+    if(confirmDel===id)return `<div class="ri"><span class="nm">${esc(t("confirmDel",{n:x.n}))}</span><button class="b sm danger" data-act="del-ok" data-f="${fa}" data-r="${e}">${t("yesDel")}</button><button class="b sm" data-act="cancel">${t("no")}</button></div>`;
+    return `<div class="ri"><span class="nm">${e}</span><span class="ct">${t("portsN",{n:c})}</span><button class="b sm" data-act="ren" data-f="${fa}" data-r="${e}">${t("rename")}</button><button class="b sm danger" data-act="del" data-f="${fa}" data-r="${e}">${t("del")}</button></div>`}).join("")).join("");
+}
+$("#roomlist").addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="rn-new"){e.preventDefault();e.target.parentElement.querySelector('[data-act="ren-ok"]').click()}else if(e.key==="Escape"&&e.target.id==="rn-new"){editing=null;renderRooms()}});
+$("#roomlist").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-act]");if(!b)return;const act=b.dataset.act,r=b.dataset.r,f=b.dataset.f??"",id=f+"\u0001"+r,msg=$("#rmsg");msg.textContent="";
+  if(act==="cancel"){editing=confirmDel=null;renderRooms();return}
+  if(act==="ren"){editing=id;confirmDel=null;renderRooms();const i=$("#rn-new");i.focus();i.select();return}
+  if(act==="del"){const c=roomCount(f,r);if(c){msg.textContent=t("roomUsed",{n:r,c});return}confirmDel=id;editing=null;renderRooms();return}
+  if(act==="del-ok"){P.rooms=P.rooms.filter(x=>!(x.f===f&&x.n===r));confirmDel=null;persist();renderAll();msg.textContent=t("roomDeleted",{n:r});return}
+  if(act==="ren-ok"){const nv=$("#rn-new").value.trim();
+    if(!nv){msg.textContent=t("emptyName");return}
+    if(nv===r){editing=null;renderRooms();return}
+    const merge=allRooms().some(x=>x.f===f&&x.n===nv);let n=0;
+    for(const k of Object.keys(P.ports))if(fKey(P.ports[k].floor)===f&&P.ports[k].room===r){P.ports[k]={...P.ports[k],room:nv};n++}
+    P.rooms=P.rooms.filter(x=>!(x.f===f&&x.n===r));if(!P.rooms.some(x=>x.f===f&&x.n===nv))P.rooms.push({f,n:nv});
+    editing=null;persist();renderAll();msg.textContent=merge?t("merged",{a:r,b:nv,n}):t("renamed",{n})}
+});
+
+/* ---------- building bar, export / import ---------- */
+function applyStatic(){
+  document.documentElement.lang=LANG;
+  document.querySelectorAll("[data-t]").forEach(el=>{el.textContent=t(el.dataset.t)});
+  document.querySelectorAll("[data-ph]").forEach(el=>{el.placeholder=t(el.dataset.ph)});
+  $("#proj").setAttribute("aria-label",t("building"));
+}
+function renderBar(){
+  $("#lang").innerHTML=Object.keys(I18N).map(l=>opt(l,I18N[l].langName,LANG)).join("");$("#lang").setAttribute("aria-label",t("language"));$("#lang").title=t("language");
+  $("#proj").innerHTML=Object.values(store.projects).sort((a,b)=>a.name.localeCompare(b.name,LANG)).map(p=>opt(p.id,p.name,store.current)).join("");
+  $("#title").textContent=P.name+" · Port Map";document.title=P.name+" · Port Map";
+  const cur=$("#fsw").value;$("#fsw").innerHTML=opt("",t("allSwitches"),cur)+portDevs().map(s=>opt(s.id,s.name,cur)).join("");
+}
+function openProject(id){store.current=id;P=store.projects[id];sel=null;editing=confirmDel=null;persist();showMap();renderBar();renderAll()}
+$("#proj").addEventListener("change",e=>openProject(e.target.value));
+function download(name,text){
+  if(matchMedia("(pointer:coarse)").matches&&navigator.canShare){try{const f=new File([text],name,{type:"application/json"});if(navigator.canShare({files:[f]})){navigator.share({files:[f],title:name}).catch(()=>{});return}}catch(_){}}
+  downloadFile(name,text)}
+function downloadFile(name,text){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:"application/json"}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
+const fileSafe=s=>s.replace(/[\\/:*?"<>|]+/g,"-").trim()||"building";
+$("#btn-exp").addEventListener("click",()=>{download(`${fileSafe(P.name)} ${new Date().toISOString().slice(0,10)}.portmap.json`,JSON.stringify({type:"portmap-project",version:2,exported:new Date().toISOString(),project:P},null,2));setStatus(t("exportOk"))});
+$("#btn-imp").addEventListener("click",()=>$("#imp").click());
+// Converts an export from the first (Villa 2) version of the tool.
+function fromV1(p){
+  const q=newProject(p.name);q.id=p.id||q.id;q.switches=clone(p.config.switches||[]);
+  const fk={};const addF=n=>{if(!n||n==="__later")return n||"";if(!fk[n]){const k=uid("f");fk[n]=k;q.floors.push({k,n})}return fk[n]};
+  (p.config.floors||[]).forEach(addF);
+  const V1T={pc:["PC","#2f7de1"],ap:["Access Point","#14a37f"],cam:["Camera","#d9822b"],prn:["Printer","#8a5cd6"],tel:["IP Phone","#c9475d"],srv:["Server","#4d5bd1"],nvr:["NVR","#8a6d3b"],fw:["Firewall","#b3262f"],tv:["TV","#0e8fa8"],tp:["Touch Panel","#c2569f"],ic:["Intercom","#5e8f2e"],data:["Data Outlet","#8e9bd4"],oth:["Other","#7c8a99"]};
+  const usedT=new Set(Object.values(p.ports||{}).map(d=>d.type));const tk={};
+  for(const id of Object.keys(V1T))if(usedT.has(id)){const k=uid("t");tk[id]=k;q.types.push({k,n:V1T[id][0],c:V1T[id][1]})}
+  const vk={};for(const [vid,n,sn] of (p.config.vlans||[])){const k=uid("v");vk[vid]=k;q.vlans.push({k,vid,n,sn:sn||""})}
+  for(const [key,d] of Object.entries(p.ports||{})){
+    const conn=d.type==="up"?"up":d.panel==="DIR"?"pc":"pp";
+    q.ports[key]={sw:d.sw,port:d.port,conn,panel:d.panel||"",pp:d.panel&&!["DIR","LATER"].includes(d.panel)?(d.pp||1):"",floor:addF(d.floor),room:d.room||"",
+      type:tk[d.type]||"",name:d.name||"",vlan:d.vlan==="none"?"none":(vk[d.vlan]||""),note:d.note||"",peerSw:d.peerSw||"",peerPort:d.peerPort||""}}
+  const rooms=[],addR=(f,n)=>{if(n&&n!=="__later"&&!rooms.some(x=>x.f===f&&x.n===n))rooms.push({f,n})};
+  for(const d of Object.values(q.ports))addR(fKey(d.floor),d.room);
+  for(const x of p.rooms||[]){if(typeof x==="string"){if(!rooms.some(y=>y.n===x))addR("",x)}else addR(fKey(addF(x.f)),x.n)}
+  q.rooms=rooms;return q}
+function normalize(p){const q=p.config?fromV1(p):clone(p);for(const k of ["switches","floors","rooms","types","vlans","conns"])q[k]=q[k]||[];q.ports=q.ports||{};q.hiddenConns=q.hiddenConns||[];
+  // uplink / SFP ports carry every VLAN unless set otherwise
+  for(const [k,d] of Object.entries(q.ports))if((d.conn==="up"||d.conn==="sfp")&&!d.vlan)q.ports[k]={...d,vlan:"all"};q.switches.forEach(x=>{x.layout=x.layout||"oe";x.kind=x.kind||"switch"});
+  // older versions kept patch panels on each switch: give every switch its own rack cabinet
+  if(!Array.isArray(q.racks)||(!q.racks.length&&q.switches.length))q.racks=q.switches.map(s=>{const pn=s.panels||[],u=x=>({t:"p",id:x.id,ports:x.ports});return {id:uid("r"),name:s.name,units:[...pn.filter(x=>x.pos==="top").map(u),{t:"s",sw:s.id},...pn.filter(x=>x.pos!=="top").map(u)]}});
+  for(const s of q.switches){delete s.panels;if(!q.racks.some(r=>r.units.some(x=>x.t==="s"&&x.sw===s.id)))q.racks.push({id:uid("r"),name:s.name,units:[{t:"s",sw:s.id}]})}q.name=q.name||t("firstBuilding");return q}
+$("#imp").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();
+  rd.onload=()=>{try{const j=JSON.parse(rd.result);const list=j.type==="portmap-project"?[j.project]:j.projects?Object.values(j.projects):[];
+      if(!list.length||!list.every(p=>p&&p.ports&&(p.config||p.switches)))throw 0;let last;
+      for(const p0 of list){const p=normalize(p0);if(store.projects[p.id])p.id=uid("b");store.projects[p.id]=p;last=p.id}
+      // an untouched empty starter building is replaced by the import
+      const st=Object.values(store.projects).find(x=>x.id!==last&&!x.racks.length&&!x.switches.length&&!Object.keys(x.ports).length&&!x.floors.length&&!x.types.length);
+      if(st)delete store.projects[st.id];
+      openProject(last);setStatus(t("importOk",{n:list.length}))}
+    catch(_){setStatus(t("importBad"))}
+    e.target.value=""};
+  rd.readAsText(f)});
+
+/* ---------- settings & new building ---------- */
+function showMap(){$("#v-map").hidden=false;$("#v-set").hidden=true}
+function openView(html){$("#v-map").hidden=true;const v=$("#v-set");v.hidden=false;v.innerHTML=html;window.scrollTo({top:0});const h=v.querySelector("h2");if(h){h.tabIndex=-1;h.focus({preventScroll:true})}}
+function showNew(){
+  openView(`<section class="card"><div class="btns"><button class="b sm" type="button" id="back">${t("backToMap")}</button></div><h2>${t("nbTitle")}</h2>
+    <form id="nf"><label>${t("nbName")}<input id="n-name" placeholder="${esc(t("nbNamePh"))}"></label>
+    <label class="chk"><input type="radio" name="nmode" value="blank" checked> ${t("nbBlank")}</label>
+    <label class="chk"><input type="radio" name="nmode" value="copy"> ${t("nbCopy")}</label>
+    <select id="n-from">${Object.values(store.projects).map(p=>opt(p.id,p.name,store.current)).join("")}</select>
+    <p class="hint">${t("nbHint")}</p>
+    <div class="btns"><button class="b pri" type="submit">${t("nbCreate")}</button><button class="b" type="button" id="n-cancel">${t("cancel")}</button></div>
+    <div class="msg" id="nmsg"></div></form></section>`);
+  $("#back").addEventListener("click",showMap);$("#n-cancel").addEventListener("click",showMap);
+  $("#nf").addEventListener("submit",e=>{e.preventDefault();const name=$("#n-name").value.trim();if(!name){$("#nmsg").textContent=t("needName");return}
+    const copy=document.querySelector("input[name=nmode]:checked").value==="copy";
+    const p=copy?copyStructure(store.projects[$("#n-from").value],name):newProject(name);store.projects[p.id]=p;openProject(p.id)});
+  $("#n-name").focus();
+}
+const xbtn=`<button class="x" type="button" data-rm title="">×</button>`;
+const floorSelOpts=cur=>opt("",t("noFloor"),cur)+P.floors.map(f=>opt(f.k,f.n,cur)).join("");
+function lrowRoom(x){return `<div class="lrow" data-k="r" data-of="${esc(x.f)}" data-on="${esc(x.n)}"><input class="v-n" value="${esc(x.n)}" placeholder="${esc(t("phNewRoom"))}" aria-label="${esc(t("fRoom"))}"><select class="v-f" aria-label="${esc(t("fFloor"))}">${floorSelOpts(x.f)}</select>${xbtn}</div>`}
+function lrowFloor(f){return `<div class="lrow" data-k="${esc(f.k)}"><input class="v-n" value="${esc(f.n)}">${xbtn}</div>`}
+function lrowType(x){return `<div class="lrow" data-k="${esc(x.k)}"><input class="v-n" value="${esc(x.n)}"><input class="v-c" type="color" value="${esc(x.c)}">${xbtn}</div>`}
+function lrowVlan(x){return `<div class="lrow" data-k="${esc(x.k)}"><input class="v-id vid" value="${esc(x.vid)}" placeholder="${esc(t("vlanId"))}"><input class="v-n" value="${esc(x.n)}" placeholder="${esc(t("vlanName"))}"><input class="v-s" value="${esc(x.sn)}" placeholder="${esc(t("vlanSubnet"))}">${xbtn}</div>`}
+function lrowConn(x){return `<div class="lrow" data-k="${esc(x.k)}"><input class="v-n" value="${esc(x.n)}">${xbtn}</div>`}
+const mvBtns=()=>`<button class="x" type="button" data-up title="${esc(t("moveUp"))}" aria-label="${esc(t("moveUp"))}">↑</button><button class="x" type="button" data-down title="${esc(t("moveDown"))}" aria-label="${esc(t("moveDown"))}">↓</button><button class="x" type="button" data-urm title="${esc(t("remove"))}" aria-label="${esc(t("remove"))}">×</button>`;
+function unitRow(u){
+  if(u.t==="p")return `<div class="urow" data-t="p" data-orig="${esc(u.id||"")}"><span class="ubadge">${t("kindPanel")}</span><input class="u-name" value="${esc(u.id||"")}" placeholder="PP" aria-label="${esc(t("unitName"))}"><input class="u-ports" type="number" min="1" max="96" value="${u.ports||24}" aria-label="${esc(t("swPortsLbl"))}"><span class="u-sp"></span>${mvBtns()}</div>`;
+  const s=u.s||SW(u.sw)||{id:u.sw,name:"",ports:24,layout:"oe"};
+  return `<div class="urow" data-t="s" data-id="${esc(s.id)}"><select class="u-kind kindsel" aria-label="${esc(t("unitKind"))}">${DKINDS.map(k=>opt(k,kindName(k),s.kind||"switch")).join("")}</select><input class="u-name" value="${esc(s.name)}" aria-label="${esc(t("swNameLbl"))}"><input class="u-ports" type="number" min="0" max="96" value="${s.ports}" aria-label="${esc(t("swPortsLbl"))}"><select class="u-lay" aria-label="${esc(t("numbering"))}">${opt("oe",t("layOE"),s.layout||"oe")}${opt("seq",t("laySeq"),s.layout)}</select>${mvBtns()}</div>`}
+function rackBlock(rk){return `<div class="swblock rkblock" data-id="${esc(rk.id)}">
+  <div class="swhead"><label>${t("rackName")}<input class="r-name" value="${esc(rk.name)}"></label><span></span><span></span><button class="b sm danger r-del" type="button">${t("removeRack")}</button></div>
+  <div class="urows">${rk.units.map(unitRow).join("")}</div>
+  <div class="btns"><button class="b sm u-addp" type="button">${t("addPanel")}</button><button class="b sm u-adds" type="button">${t("addSwitch")}</button></div></div>`}
+function listSection(id,title,rows,addLabel=t("addRow"),extra=""){return `<section class="card"><h3>${title}</h3>${extra}<div id="${id}">${rows||""}</div><div><button class="b sm" type="button" data-add="${id}">${addLabel}</button></div></section>`}
+function showSettings(){
+  openView(`<section class="card"><div class="btns"><button class="b sm" type="button" id="back">${t("backToMap")}</button></div>
+      <h2>${esc(t("setTitle",{b:P.name}))}</h2>
+      <div class="row"><label>${t("bName")}<input id="s-bname" value="${esc(P.name)}"></label><span></span>
+      </div></section>
+
+    <section class="card"><h3>${t("setRacks")}</h3><p class="hint">${t("rackHint")}</p><div id="s-racks" style="display:grid;gap:12px">${P.racks.map(rackBlock).join("")||`<p class="empty">${t("noneYet")}</p>`}</div>
+      <div><button class="b sm" type="button" id="s-addrack">${t("addRack")}</button></div></section>
+    <div class="setgrid">
+      ${listSection("s-floors",t("setFloors"),P.floors.map(lrowFloor).join(""))}
+      ${listSection("s-rooms",t("roomsTitle"),allRooms().map(lrowRoom).join(""),t("addRow"),`<p class="hint">${t("setRoomsHint")}</p>`)}
+      ${listSection("s-types",t("setTypes"),P.types.map(lrowType).join(""))}
+      ${listSection("s-vlans",t("setVlans"),P.vlans.map(lrowVlan).join(""))}
+      ${listSection("s-conns",t("setConns"),P.conns.map(lrowConn).join(""),t("addRow"),BCONN.filter(c=>!P.hiddenConns.includes(c.k)).map(c=>`<div class="lrow"><span class="bi">${esc(t("conn_"+c.k))} · ${t("builtIn")}</span></div>`).join("")+(P.hiddenConns.length?`<div><button class="b sm" type="button" id="s-restore">${t("restoreConns")}</button></div>`:""))}
+    </div>
+    <section class="card"><div class="btns"><button class="b pri" type="button" id="s-save">${t("save")}</button><button class="b" type="button" id="s-cancel">${t("cancel")}</button></div><div class="msg err" id="smsg"></div></section>
+    <section class="card"><h3>${t("delBuilding")}</h3><p class="hint">${t("delBuildingHint")}</p>
+      <div class="btns" id="delbox"><button class="b danger" type="button" id="b-del"${Object.keys(store.projects).length<2?" disabled":""}>${t("delBuilding")}</button></div>
+      ${Object.keys(store.projects).length<2?`<p class="hint">${t("onlyBuilding")}</p>`:""}</section>`);
+  const v=$("#v-set"),smsg=$("#smsg");
+
+  $("#back").addEventListener("click",showMap);$("#s-cancel").addEventListener("click",showMap);
+  $("#s-restore")?.addEventListener("click",()=>{P.hiddenConns=[];persist();showSettings();setStatus(t("restored"))});
+  $("#s-addrack").addEventListener("click",()=>{const box=$("#s-racks");if(box.querySelector(".empty"))box.innerHTML="";box.insertAdjacentHTML("beforeend",rackBlock({id:uid("r"),name:t("defaultRackName",{n:box.children.length+1}),units:[]}));box.lastElementChild.querySelector(".r-name").focus()});
+  // Enter saves the settings from any field
+  v.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.isComposing&&e.target.matches("input:not([type=color]),select")&&!e.target.closest("#delbox")){e.preventDefault();$("#s-save").click()}});
+  // a room's floor list follows the floors being edited on this page
+  v.addEventListener("focusin",e=>{if(!e.target.matches("#s-rooms .v-f"))return;const cur=e.target.value;
+    e.target.innerHTML=opt("",t("noFloor"),cur)+[...document.querySelectorAll("#s-floors .lrow[data-k]")].map(r=>opt(r.dataset.k,r.querySelector(".v-n").value.trim()||"?",cur)).join("")});
+  const swPortsIn=id=>Object.values(P.ports).filter(d=>d.sw===id);
+  const adders={"s-rooms":()=>lrowRoom({f:"",n:""}),"s-floors":()=>lrowFloor({k:uid("f"),n:""}),"s-types":()=>lrowType({k:uid("t"),n:"",c:nextColor()}),"s-vlans":()=>lrowVlan({k:uid("v"),vid:"",n:"",sn:""}),"s-conns":()=>lrowConn({k:uid("c"),n:""})};
+  const field={"s-floors":"floor","s-types":"type","s-vlans":"vlan","s-conns":"conn"};
+  v.addEventListener("click",e=>{
+    const add=e.target.closest("[data-add]");if(add){const box=$("#"+add.dataset.add);box.insertAdjacentHTML("beforeend",adders[add.dataset.add]());box.lastElementChild.querySelector("input").focus();return}
+    const blk=e.target.closest(".rkblock");
+    if(e.target.closest(".u-addp")){const b=blk.querySelector(".urows"),ids=[...b.querySelectorAll('.urow[data-t="p"] .u-name')].map(x=>x.value);
+      b.insertAdjacentHTML("beforeend",unitRow({t:"p",id:suggestPanelId({units:ids.map(id=>({t:"p",id}))}),ports:24}));b.lastElementChild.querySelector(".u-name").focus();return}
+    if(e.target.closest(".u-adds")){const b=blk.querySelector(".urows"),id=uid("s"),n=P.switches.length+document.querySelectorAll('#s-racks .urow[data-t="s"]').length-P.switches.length+1;
+      b.insertAdjacentHTML("beforeend",unitRow({t:"s",s:{id,name:`SW ${n}`,ports:24,layout:"oe"}}));b.lastElementChild.querySelector(".u-name").focus();return}
+    const ur=e.target.closest(".urow");
+    if(ur&&e.target.closest("[data-up]")){const p=ur.previousElementSibling;if(p)p.before(ur);e.target.closest("[data-up]").focus();return}
+    if(ur&&e.target.closest("[data-down]")){const n=ur.nextElementSibling;if(n)n.after(ur);e.target.closest("[data-down]").focus();return}
+    if(ur&&e.target.closest("[data-urm]")){smsg.textContent="";const rkId=blk.dataset.id,rk=P.racks.find(r=>r.id===rkId);
+      if(ur.dataset.t==="s"){const c=swPortsIn(ur.dataset.id).length;if(c){smsg.textContent=t("swUsed",{n:ur.querySelector(".u-name").value,c});return}}
+      else{const orig=ur.dataset.orig;const u=orig&&rk?Object.values(P.ports).find(d=>swIdsIn(rk).includes(d.sw)&&d.panel===orig):null;
+        if(u){smsg.textContent=t("errPanelUsed",{n:blk.querySelector(".r-name").value,p:orig,port:`${swName(u.sw)} :${u.port}`});return}}
+      ur.remove();return}
+    if(e.target.closest(".r-del")){const ids=[...blk.querySelectorAll('.urow[data-t="s"]')].map(x=>x.dataset.id);
+      if(ids.some(id=>swPortsIn(id).length)){smsg.textContent=t("rackUsed",{n:blk.querySelector(".r-name").value});return}blk.remove();return}
+    const rm=e.target.closest("[data-rm]");
+    if(rm){smsg.textContent="";
+      const row=rm.closest(".lrow"),sec=row.parentElement.id;
+      if(sec==="s-rooms"){const c=row.dataset.on?roomCount(row.dataset.of,row.dataset.on):0;if(c){smsg.textContent=t("roomUsed",{n:row.dataset.on,c});return}row.remove();return}
+      const c=useCount(field[sec],row.dataset.k);
+      if(c){smsg.textContent=t("inUse",{n:row.querySelector(".v-n").value||row.querySelector("input").value,c});return}row.remove();return}
+  });
+  $("#b-del").addEventListener("click",()=>{$("#delbox").innerHTML=`<span>${esc(t("delBuildingQ",{n:P.name}))}</span><button class="b danger" type="button" id="b-del-ok">${t("yesDel")}</button><button class="b" type="button" id="b-del-no">${t("no")}</button>`;
+    $("#b-del-no").addEventListener("click",showSettings);
+    $("#b-del-ok").addEventListener("click",()=>{delete store.projects[P.id];openProject(Object.keys(store.projects)[0]);setStatus(t("buildingDeleted"))})});
+  $("#s-save").addEventListener("click",()=>{
+    try{
+      const name=$("#s-bname").value.trim();if(!name)throw t("needName");
+      const switches=[],renamesBy=[];
+      const racks=[...document.querySelectorAll("#s-racks .rkblock")].map(blk=>{
+        const rid=blk.dataset.id,rname=blk.querySelector(".r-name").value.trim();if(!rname)throw t("errRackName");
+        const renames={},units=[],pids=[];
+        for(const row of blk.querySelectorAll(".urow")){
+          const nm=row.querySelector(".u-name").value.trim(),ports=+row.querySelector(".u-ports").value;
+          if(row.dataset.t==="s"){const id=row.dataset.id;
+            const kd=row.querySelector(".u-kind").value;
+            if(!nm)throw t("errSwName");if(!(ports>=0&&ports<=96))throw t("errSwPorts",{n:nm});if(kd==="switch"&&ports<1)throw t("errSwZero");
+            const used=Object.values(P.ports).filter(d=>d.sw===id&&d.port>ports&&hasContent(d)).map(d=>d.port).sort((a,b)=>a-b);if(used.length)throw nm+": "+t("errShrink",{n:ports,list:listShort(used)});
+            switches.push({id,name:nm,ports,layout:row.querySelector(".u-lay").value,kind:kd});units.push({t:"s",sw:id})}
+          else{if(!/^[A-Za-z0-9]{1,8}$/.test(nm)||["DIR","LATER"].includes(nm.toUpperCase())||!(ports>=1&&ports<=96))throw t("errPanelRackRow",{n:rname});
+            if(pids.includes(nm.toLowerCase()))throw t("errDupPanel",{n:rname,p:nm});pids.push(nm.toLowerCase());
+            if(row.dataset.orig&&row.dataset.orig!==nm)renames[row.dataset.orig]=nm;units.push({t:"p",id:nm,ports})}}
+        const ids=units.filter(u=>u.t==="s").map(u=>u.sw);
+        for(const d of Object.values(P.ports)){if(!ids.includes(d.sw)||!d.panel||["DIR","LATER"].includes(d.panel))continue;
+          const np=renames[d.panel]||d.panel,pu=units.find(u=>u.t==="p"&&u.id===np);
+          if(!pu)throw t("errPanelUsed",{n:rname,p:d.panel,port:`${swName(d.sw)} :${d.port}`});
+          if(+d.pp>pu.ports)throw t("errPanelPP",{n:rname,p:np,pp:d.pp})}
+        renamesBy.push([ids,renames]);return {id:rid,name:rname,units}});
+      for(const s of P.switches)if(!switches.some(x=>x.id===s.id)){const c=Object.keys(P.ports).filter(k=>k.startsWith(s.id+"-")).length;if(c)throw t("swUsed",{n:s.name,c})}
+      const readList=(sec,fn)=>{const rows=[...document.querySelectorAll(`#${sec} .lrow[data-k]`)].map(fn);const names=rows.map(x=>(x.vid||x.n).toLowerCase());
+        const dup=rows.find((x,i)=>names.indexOf((x.vid||x.n).toLowerCase())!==i);if(dup)throw t("errDup",{n:dup.vid||dup.n});return rows};
+      const need=s=>{if(!s)throw t("errRowName");return s};
+      const floors=readList("s-floors",r=>({k:r.dataset.k,n:need(r.querySelector(".v-n").value.trim())}));
+      const types=readList("s-types",r=>({k:r.dataset.k,n:need(r.querySelector(".v-n").value.trim()),c:r.querySelector(".v-c").value}));
+      const vlans=readList("s-vlans",r=>({k:r.dataset.k,vid:need(r.querySelector(".v-id").value.trim()),n:need(r.querySelector(".v-n").value.trim()),sn:r.querySelector(".v-s").value.trim()}));
+      const cs=readList("s-conns",r=>({k:r.dataset.k,n:need(r.querySelector(".v-n").value.trim()),peer:!!(P.conns.find(c=>c.k===r.dataset.k)||{}).peer}));
+      const gone=(list,newList,f)=>{for(const x of list)if(!newList.some(y=>y.k===x.k)){const c=useCount(f,x.k);if(c)throw t("inUse",{n:x.n,c})}};
+      const roomRows=[...document.querySelectorAll("#s-rooms .lrow")].map(r=>{const f=r.querySelector(".v-f").value;return {of:r.dataset.of,on:r.dataset.on,n:need(r.querySelector(".v-n").value.trim()),f:floors.some(x=>x.k===f)?f:""}});
+      for(const x of allRooms())if(!roomRows.some(r=>r.on===x.n&&r.of===x.f)){const c=roomCount(x.f,x.n);if(c)throw t("roomUsed",{n:x.n,c})}
+      gone(P.floors,floors,"floor");gone(P.types,types,"type");gone(P.vlans,vlans,"vlan");gone(P.conns,cs,"conn");
+      // apply
+      for(const [ids,ren] of renamesBy)for(const k of Object.keys(P.ports)){const d=P.ports[k];if(ids.includes(d.sw)&&ren[d.panel])P.ports[k]={...d,panel:ren[d.panel]}}
+      for(const k of Object.keys(P.ports))if(!switches.some(s=>s.id===P.ports[k].sw))delete P.ports[k];
+      P.name=name;P.racks=racks;P.switches=switches;P.floors=floors;P.types=types;P.vlans=vlans;P.conns=cs;
+      // rooms: rename / move to another floor, and their ports follow
+      const moves=roomRows.filter(r=>r.on&&(r.on!==r.n||r.of!==r.f)).map(r=>({...r,keys:Object.keys(P.ports).filter(k=>fKey(P.ports[k].floor)===r.of&&P.ports[k].room===r.on)}));
+      for(const m of moves)for(const k of m.keys)P.ports[k]={...P.ports[k],room:m.n,floor:m.f||P.ports[k].floor};
+      const rl=[];for(const r of roomRows)if(!rl.some(x=>x.f===r.f&&x.n===r.n))rl.push({f:r.f,n:r.n});P.rooms=rl;
+      if(sel&&!SW(sel.sw))sel=null;
+      persist();applyStatic();showMap();renderBar();renderAll();setStatus(t("setSaved"));window.scrollTo({top:0});
+    }catch(err){smsg.textContent=typeof err==="string"?err:String(err&&err.message||err);smsg.scrollIntoView({block:"center"})}
+  });
+}
+$("#btn-set").addEventListener("click",showSettings);
+$("#lang").addEventListener("change",e=>{store.lang=e.target.value;store.langUser=true;LANG=e.target.value;persist();applyStatic();renderBar();renderAll();
+  const v=$("#v-set");if(!v.hidden){if(v.querySelector("#s-save"))showSettings();else if(v.querySelector("#nf"))showNew()}setStatus(t("langChanged"))});
+$("#btn-undo").addEventListener("click",undo);
+$("#btn-new").addEventListener("click",showNew);
+
+function renderAll(){renderLegend();renderRacks();renderTable();renderRooms();renderSide()}
+store=loadStore();LANG=pickLang();
+for(const id of Object.keys(store.projects))store.projects[id]=normalize(store.projects[id]);
+P=store.projects[store.current];lastSnap=snap();
+applyStatic();renderBar();renderAll();
+setStatus(NATIVE&&NATIVE.path?t("dataFile",{p:NATIVE.path()}):t("localData"));
+if(matchMedia("(max-width:900px)").matches)$("#legwrap").open=false;
+if(!NATIVE){
+  if("serviceWorker" in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register("sw.js").catch(()=>{});
+  navigator.storage?.persist?.().catch(()=>{});
+  let ip=null;window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();ip=e;$("#btn-install").hidden=false});
+  $("#btn-install").addEventListener("click",async()=>{if(!ip)return;ip.prompt();try{await ip.userChoice}catch(_){}ip=null;$("#btn-install").hidden=true});
+  window.addEventListener("appinstalled",()=>{$("#btn-install").hidden=true});
+}
+</script>
+</body>
+</html>
